@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 
 from app.schemas.money import Money
 
+# How often this item is inspected. See app/services/inspection_programme.py.
+Frequency = Literal["monthly", "quarterly", "semi_annual", "annual", "custom"]
+
 # Years, as the asset table stores a useful life: Numeric(5, 2).
 UsefulLife = Annotated[Decimal, Field(gt=0, le=Decimal("100"), decimal_places=2)]
 
@@ -39,6 +42,17 @@ class CategoryEquipmentCreate(BaseModel):
     # Left out, it defaults from the category.
     useful_life_years: Optional[UsefulLife] = None
 
+    # ── Inspections and PM ──────────────────────────────────────────────────
+    # The department that answers for it, how often it is inspected, and the
+    # maintenance raised when it falls due. The frequency and the first date
+    # are prefilled from the department on screen.
+    department_id: Optional[int] = None
+    frequency: Optional[Frequency] = None
+    interval_days: Optional[int] = Field(None, ge=1, le=3650)
+    first_due_on: Optional[date] = None
+    pm_task: Optional[str] = Field(None, max_length=500)
+    pm_assignee_id: Optional[int] = None
+
 
 class CategoryEquipmentUpdate(BaseModel):
     category: Optional[CategoryCode] = None
@@ -55,6 +69,13 @@ class CategoryEquipmentUpdate(BaseModel):
     unit_cost: Optional[Money] = None
     in_service_on: Optional[date] = None
     useful_life_years: Optional[UsefulLife] = None
+
+    department_id: Optional[int] = None
+    frequency: Optional[Frequency] = None
+    interval_days: Optional[int] = Field(None, ge=1, le=3650)
+    first_due_on: Optional[date] = None
+    pm_task: Optional[str] = Field(None, max_length=500)
+    pm_assignee_id: Optional[int] = None
 
 
 class CategoryAdopt(BaseModel):

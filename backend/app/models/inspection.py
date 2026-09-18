@@ -15,6 +15,9 @@ class InspectionResult(str, enum.Enum):
     PASS = "pass"
     FAIL = "fail"
     PENDING = "pending"
+    # Failed badly enough to say the site is not up to standard. It outlives
+    # the inspection: see app/models/red_tag.py.
+    RED_TAG = "red_tag"
 
 
 class InspectionBatch(Base):
@@ -28,7 +31,9 @@ class InspectionBatch(Base):
     batch_number = Column(String, unique=True, nullable=False, index=True)
     facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False, index=True)
     inspector_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    form_template_id = Column(Integer, ForeignKey("inspection_forms.id"), nullable=False)
+    form_template_id = Column(Integer, ForeignKey("inspection_forms.id"), nullable=True)
+    # The department being visited. Empty means the whole site, or its fleet.
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
     status = Column(SQLEnum(InspectionStatus), default=InspectionStatus.UPCOMING, index=True)
     scheduled_date = Column(DateTime, nullable=False)
     started_at = Column(DateTime, nullable=True)
@@ -58,6 +63,9 @@ class Inspection(Base):
     inspection_number = Column(String, unique=True, nullable=False, index=True)
     batch_id = Column(Integer, ForeignKey("inspection_batches.id"), nullable=True, index=True)
     equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=True)
+    # A fleet visit inspects vehicles; a department visit inspects equipment.
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=True, index=True)
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
     inventory_part_id = Column(Integer, ForeignKey("inventory_parts.id"), nullable=True, index=True)
     facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=False)
     inspector_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -81,6 +89,7 @@ class Inspection(Base):
     # Relationships
     batch = relationship("InspectionBatch", back_populates="inspections")
     facility = relationship("Facility")
+    vehicle = relationship("Vehicle")
     equipment = relationship("Equipment", back_populates="inspections")
     inventory_part = relationship("InventoryPart")
     inspector = relationship("User")

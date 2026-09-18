@@ -24,6 +24,9 @@ from app.models.rental import (
     RentalDiscountPackage,
 )
 from app.models.inspection_form import InspectionForm
+from app.models.inspection_form_link import InspectionFormLink
+from app.models.vehicle import Vehicle
+from app.models.red_tag import RedTag
 from app.models.audit_log import AuditLog
 from app.models.notification import Notification
 from app.models.facility_document import FacilityDocument

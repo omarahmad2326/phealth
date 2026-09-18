@@ -276,10 +276,20 @@ def value_facts(db: Session, assets: list[Equipment], *, as_of: date | None = No
 
 
 def serialise(asset: Equipment, category: Category, facts: dict | None = None,
-              value: dict | None = None) -> dict:
+              value: dict | None = None, *, department_name: str | None = None,
+              red_tagged: bool = False, today: date | None = None) -> dict:
+    """One item as the screens show it, including how it is inspected."""
+    from app.services import inspection_programme as programme
+
     facts = facts or {}
     value = value or {}
     return {
+        # ── inspections ──────────────────────────────────────────────────────
+        "department_id": asset.department_id,
+        "department": department_name,
+        "red_tagged": red_tagged,
+        "due_state": programme.due_state(asset, today=today),
+        **programme.schedule_of(asset),
         "id": asset.id,
         "asset_tag": asset.asset_tag,
         "category": category.code,

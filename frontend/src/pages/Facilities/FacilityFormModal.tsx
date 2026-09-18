@@ -42,6 +42,11 @@ const schema = z.object({
   timezone: z.string().default('America/Chicago'),
   operating_hours: z.string().optional().nullable(),
   
+  // Size, for the inspection dashboard
+  beds: z.coerce.number().min(0).max(100000).nullable().optional(),
+  area_sqft: z.coerce.number().min(0).max(100000000).nullable().optional(),
+  size_band: z.string().optional().nullable(),
+
   // Details
   parent_facility_id: z.number().nullable().optional(),
   status: z.string().default('active'),
@@ -360,6 +365,32 @@ const FacilityFormModal = ({ open, onClose, facility, locateOnSave = true }: Pro
                 <Grid item xs={12} sm={6}>
                   <Controller name="operating_hours" control={control} render={({ field }) => (
                     <TextField {...field} value={field.value || ''} fullWidth label="Operating Hours" placeholder="e.g. Mon-Fri 8am-5pm" error={!!errors.operating_hours} helperText={errors.operating_hours?.message} />
+                  )} />
+                </Grid>
+                {/* How big the site is. The band is what the inspection
+                    dashboard groups by; beds and area are what people quote. */}
+                <Grid item xs={12} sm={4}>
+                  <Controller name="beds" control={control} render={({ field }) => (
+                    <TextField {...field} value={field.value ?? ''} type="number" fullWidth label="Beds"
+                               onChange={(event) => field.onChange(event.target.value === '' ? null : Number(event.target.value))}
+                               inputProps={{ min: 0 }} />
+                  )} />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Controller name="area_sqft" control={control} render={({ field }) => (
+                    <TextField {...field} value={field.value ?? ''} type="number" fullWidth label="Area (sq ft)"
+                               onChange={(event) => field.onChange(event.target.value === '' ? null : Number(event.target.value))}
+                               inputProps={{ min: 0 }} />
+                  )} />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Controller name="size_band" control={control} render={({ field }) => (
+                    <TextField {...field} value={field.value || ''} select fullWidth label="Size">
+                      <MenuItem value="">Not set</MenuItem>
+                      <MenuItem value="small">Small</MenuItem>
+                      <MenuItem value="medium">Medium</MenuItem>
+                      <MenuItem value="large">Large</MenuItem>
+                    </TextField>
                   )} />
                 </Grid>
               </Grid>

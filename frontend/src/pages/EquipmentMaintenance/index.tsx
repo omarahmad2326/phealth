@@ -90,6 +90,7 @@ function JobList({ kind }: { kind: JobKind }) {
           <Typography sx={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.5, textTransform: 'uppercase', color: palette.textSubtle }}>
             Equipment Maintenance · {facility?.name ?? 'This site'}
           </Typography>
+          {JOB_KINDS.length > 1 && (
           <ToggleButtonGroup
             exclusive size="small" value={kind} sx={{ mt: 0.75,
               '& .MuiToggleButton-root': { fontWeight: 900, textTransform: 'none', px: 2.25, fontSize: 15, gap: 0.75 },
@@ -103,6 +104,7 @@ function JobList({ kind }: { kind: JobKind }) {
               </ToggleButton>
             ))}
           </ToggleButtonGroup>
+          )}
         </Box>
         {canAdd && (
           <Button

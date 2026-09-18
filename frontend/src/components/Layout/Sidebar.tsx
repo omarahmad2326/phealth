@@ -25,17 +25,20 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
+import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
+import EventAvailableIcon from '@mui/icons-material/EventAvailable'
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { getVisibleModules, type Module } from '@/config/permissions'
-import { CATEGORIES, EQUIPMENT_MAINTENANCE } from '@/config/siteCategories'
 import { palette } from '@/theme/palette'
 
 // Grouped the way somebody running a hospital thinks about it — the
 // building, the work done to it, the things in it — rather than the way a
 // contractor managing many client sites did.
 type ModuleGroup =
-  | 'Overview' | 'Facility' | 'Equipment Maintenance'
+  | 'Overview' | 'Inspections'
   | 'Assets' | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
 
 /**
@@ -60,24 +63,20 @@ interface SidebarItem {
 }
 
 const groupOrder: ModuleGroup[] = [
-  'Overview', 'Facility', 'Equipment Maintenance', 'Assets',
+  'Overview', 'Inspections', 'Assets',
   'Compliance', 'People', 'Commerce', 'Workspace',
 ]
 
 const allMenuItems: SidebarItem[] = [
   { text: 'Dashboard', description: 'Your operational overview', icon: <DashboardIcon />, path: '/dashboard', module: 'dashboard', group: 'Overview' },
-  // A site's equipment, by category, and the work done on it. First, because
-  // it is where the work of a site now starts.
-  ...CATEGORIES.map((category): SidebarItem => ({
-    text: category.name, description: `${category.name} equipment and where it is`,
-    icon: category.icon, path: category.path, module: 'facility-inventory', group: 'Facility',
-  })),
-  // Service and Inspection replace Work Orders and the older Inspections
-  // module in the menu; those pages still open from links.
-  ...EQUIPMENT_MAINTENANCE.map((link): SidebarItem => ({
-    text: link.name, description: link.description,
-    icon: link.icon, path: link.path, module: link.module, group: 'Equipment Maintenance',
-  })),
+  // Inspecting is what the product is for, so it is the first group. A
+  // site's own screens - Facility, Equipment Maintenance, Compliance - are
+  // reached from the site itself rather than repeated here.
+  { text: 'Departments', description: "Each department, its items and what is due", icon: <DomainOutlinedIcon />, path: '/departments', module: 'inspections', group: 'Inspections' },
+  { text: 'Visits', description: 'Scheduled inspections and their results', icon: <EventAvailableIcon />, path: '/inspection-visits', module: 'inspections', group: 'Inspections' },
+  { text: 'Fleet', description: "This site's vehicles and their inspections", icon: <LocalShippingIcon />, path: '/fleet', module: 'inspections', group: 'Inspections' },
+  { text: 'Red tags', description: 'What is not up to standard, and what was done', icon: <ReportProblemOutlinedIcon />, path: '/red-tags', module: 'inspections', group: 'Inspections' },
+  { text: 'Inspection forms', description: 'Build the checklists departments are inspected on', icon: <DescriptionOutlinedIcon />, path: '/inspections', module: 'inspections', group: 'Inspections' },
   { text: 'Contractors', description: 'Contractors, contracts, and credentials', icon: <HandshakeIcon />, path: '/vendors', module: 'vendors', group: 'Compliance' },
   { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Compliance' },
   { text: 'Asset Register', description: 'Every machine, its plan, history and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory', group: 'Assets' },
@@ -206,7 +205,7 @@ const Sidebar = () => {
 
   /** Groups whose items should collapse under a dropdown toggle. */
   const COLLAPSIBLE_GROUPS: ModuleGroup[] = [
-    'Facility', 'Equipment Maintenance', 'Assets',
+    'Inspections', 'Assets',
     'Compliance', 'People', 'Commerce', 'Workspace',
   ]
 

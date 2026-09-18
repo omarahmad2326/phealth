@@ -3,6 +3,7 @@
  * service and inspection jobs done on it.
  */
 import apiClient from './client'
+import type { DueState, Frequency, Result as ProgrammeResult } from './inspectionProgramme'
 
 export type CategoryCode = 'electrical' | 'plumbing' | 'mechanical' | 'hvac' | 'building' | 'landscaping' | 'parking'
 export type Condition = 'working' | 'needs_attention' | 'out_of_service'
@@ -61,6 +62,21 @@ export interface CategoryEquipment {
   spend_percent_of_cost: number | null
   consider_replacing: boolean
   value_message: string | null
+
+  // How it is inspected. See api/inspections.ts for the programme itself.
+  department_id: number | null
+  department: string | null
+  red_tagged: boolean
+  due_state: DueState
+  frequency: Frequency | null
+  frequency_label: string
+  interval_days: number | null
+  next_due_on: string | null
+  last_inspected_on: string | null
+  last_result: ProgrammeResult | null
+  last_result_label: string | null
+  pm_task: string | null
+  pm_assignee_id: number | null
 }
 
 export interface ValuePreview {
@@ -84,6 +100,12 @@ export interface CategoryEquipmentInput {
   unit_cost: number | null
   in_service_on: string | null
   useful_life_years: number | null
+  department_id?: number | null
+  frequency?: Frequency | null
+  interval_days?: number | null
+  first_due_on?: string | null
+  pm_task?: string | null
+  pm_assignee_id?: number | null
 }
 
 export interface PlaceSuggestions {
@@ -171,6 +193,8 @@ export const fetchCategoryEquipment = async (
   category: { code: CategoryCode; name: string; types: string[]; default_useful_life_years: number }
   items: CategoryEquipment[]
   total: number
+  /** The site's departments, for the Department picker on the form. */
+  departments: Array<{ id: number; name: string }>
 }> => {
   const params: Record<string, string | number> = { facility_id: facilityId }
   Object.entries(filters).forEach(([key, value]) => { if (value) params[key] = value })

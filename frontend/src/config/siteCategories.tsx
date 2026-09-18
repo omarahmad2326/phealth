@@ -48,9 +48,10 @@ export interface JobKindMeta {
   path: string
 }
 
+// Inspecting moved to the inspection programme - departments, forms, visits
+// and red tags - so Equipment Maintenance keeps only the work it raises.
 export const JOB_KINDS: JobKindMeta[] = [
   { kind: 'service', name: 'Service', singular: 'service', icon: <HomeRepairServiceIcon />, path: '/equipment-maintenance/service' },
-  { kind: 'inspection', name: 'Inspection', singular: 'inspection', icon: <FactCheckIcon />, path: '/equipment-maintenance/inspection' },
 ]
 
 export interface MaintenanceLink {
@@ -66,8 +67,6 @@ export interface MaintenanceLink {
 export const EQUIPMENT_MAINTENANCE: MaintenanceLink[] = [
   { name: 'Service', description: 'Service jobs on equipment', icon: <HomeRepairServiceIcon />,
     path: '/equipment-maintenance/service', module: 'service-requests' },
-  { name: 'Inspection', description: 'Inspections, pass or fail', icon: <FactCheckIcon />,
-    path: '/equipment-maintenance/inspection', module: 'service-requests' },
   { name: 'Maintenance Plans', description: 'Recurring calendar and runtime work', icon: <EventRepeatIcon />,
     path: '/maintenance', module: 'maintenance' },
   { name: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />,

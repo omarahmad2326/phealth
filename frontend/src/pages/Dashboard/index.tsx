@@ -57,6 +57,7 @@ import { enabledPermissionCount, hasPermission, type Module } from '@/config/per
 import { AnimatedNumber } from '@/components/motion'
 import { format, isValid, subDays } from 'date-fns'
 import './dashboard.css'
+import InspectionSummary from '@/components/Dashboard/InspectionSummary'
 import { palette } from '@/theme/palette'
 
 const safeFormatDate = (dateStr: string | null | undefined) => {
@@ -650,6 +651,9 @@ const Dashboard = () => {
 
   return (
     <Box className="medrad-dashboard" sx={{ maxWidth: 1440, mx: 'auto' }}>
+      {/* Inspections first: it is what the product is for, and it is the one
+          block that says whether anything is out of standard right now. */}
+      <InspectionSummary />
       <Card className="db-period" sx={{ p: { xs: 1.7, md: 2 }, mb: 3, borderRadius: '10px', border: '1px solid #e1ebe9', boxShadow: '0 3px 14px rgba(6,78,59,0.04)' }}>
         <Box className="db-period-controls" sx={{ display: 'flex', alignItems: { xs: 'stretch', lg: 'center' }, flexDirection: { xs: 'column', lg: 'row' }, gap: 1.4 }}>
           <Box className="db-period-intro" sx={{ flex: 1, minWidth: 210 }}>

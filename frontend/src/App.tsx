@@ -43,6 +43,12 @@ const Assets = lazyWithReload(() => import('./pages/Assets'))
 const AssistantDocuments = lazyWithReload(() => import('./pages/AssistantDocuments'))
 const AssetLedger = lazyWithReload(() => import('./pages/AssetLedger'))
 const Categories = lazyWithReload(() => import('./pages/Categories'))
+const Departments = lazyWithReload(() => import('./pages/Departments'))
+const DepartmentDetail = lazyWithReload(() => import('./pages/Departments/DepartmentDetail'))
+const InspectionVisits = lazyWithReload(() => import('./pages/InspectionVisits'))
+const InspectionVisit = lazyWithReload(() => import('./pages/InspectionVisits/Visit'))
+const Fleet = lazyWithReload(() => import('./pages/Fleet'))
+const RedTags = lazyWithReload(() => import('./pages/RedTags'))
 const EquipmentMaintenance = lazyWithReload(() => import('./pages/EquipmentMaintenance'))
 
 const RouteFallback = () => (
@@ -180,6 +186,12 @@ function App() {
           <Route path="categories" element={<Navigate to="/categories/electrical" replace />} />
           <Route path="categories/:code" element={<RequireSite><ProtectedPage module="facility-inventory"><Categories /></ProtectedPage></RequireSite>} />
           <Route path="equipment-maintenance" element={<Navigate to="/equipment-maintenance/service" replace />} />
+          <Route path="departments" element={<RequireSite><ProtectedPage module="inspections"><Departments /></ProtectedPage></RequireSite>} />
+          <Route path="departments/:id" element={<RequireSite><ProtectedPage module="inspections"><DepartmentDetail /></ProtectedPage></RequireSite>} />
+          <Route path="inspection-visits" element={<RequireSite><ProtectedPage module="inspections"><InspectionVisits /></ProtectedPage></RequireSite>} />
+          <Route path="inspection-visits/:id" element={<RequireSite><ProtectedPage module="inspections"><InspectionVisit /></ProtectedPage></RequireSite>} />
+          <Route path="fleet" element={<RequireSite><ProtectedPage module="inspections"><Fleet /></ProtectedPage></RequireSite>} />
+          <Route path="red-tags" element={<RequireSite><ProtectedPage module="inspections"><RedTags /></ProtectedPage></RequireSite>} />
           <Route path="equipment-maintenance/:kind" element={<RequireSite><ProtectedPage module="service-requests"><EquipmentMaintenance /></ProtectedPage></RequireSite>} />
           {/* Super Admin only; the page itself refuses anyone else. */}
           <Route path="assistant/documents" element={<AssistantDocuments />} />

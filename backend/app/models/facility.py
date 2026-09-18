@@ -48,6 +48,14 @@ class Facility(Base):
     delivery_email = Column(String, nullable=True)
 
     tier_id = Column(Integer, ForeignKey("tiers.id"), nullable=True)
+
+    # ── Size ────────────────────────────────────────────────────────────────
+    # How big the site is, for the inspection dashboard. The band is prefilled
+    # from the bed count and then left alone: a hospital knows whether it is
+    # small or large better than a threshold does.
+    beds = Column(Integer, nullable=True)
+    area_sqft = Column(Integer, nullable=True)
+    size_band = Column(String, nullable=True)  # small / medium / large
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

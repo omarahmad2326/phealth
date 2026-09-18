@@ -1,7 +1,7 @@
 /**
- * The site you are in, and its three places to work: Facility,
- * Equipment Maintenance (Service, Inspection, Maintenance Plans, Permits to
- * Work) and Compliance.
+ * The site you are in and everything that belongs to it: Inspections
+ * (departments, visits, fleet, red tags), Facility, Equipment Maintenance
+ * (Service, Maintenance Plans, Permits to Work) and Compliance.
  *
  * Always under the header once a site is open, so getting from a generator to
  * its service jobs is one click from anywhere rather than a trip through the
@@ -14,6 +14,10 @@ import { Box, Button, ListItemIcon, ListItemText, Menu, MenuItem, Typography } f
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
 import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined'
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
+import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
+import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
+import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
 import { fetchCategoryOverview } from '@/api/siteCategories'
 import { hasPermission } from '@/config/permissions'
 import { CATEGORIES, CATEGORIES_LABEL, EQUIPMENT_MAINTENANCE } from '@/config/siteCategories'
@@ -21,7 +25,19 @@ import { useActiveFacility, useFacilityStore } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 
-type MenuName = 'categories' | 'maintenance'
+type MenuName = 'inspections' | 'categories' | 'maintenance'
+
+// The inspection screens, in the order somebody works through them.
+const INSPECTION_LINKS = [
+  { name: 'Departments', description: 'Items, forms and what is due', path: '/departments',
+    icon: <DomainOutlinedIcon /> },
+  { name: 'Visits', description: 'Scheduled inspections and results', path: '/inspection-visits',
+    icon: <EventAvailableOutlinedIcon /> },
+  { name: 'Fleet', description: "This site's vehicles", path: '/fleet',
+    icon: <LocalShippingOutlinedIcon /> },
+  { name: 'Red tags', description: 'Not up to standard', path: '/red-tags',
+    icon: <ReportProblemOutlinedIcon /> },
+]
 
 export default function SiteNav() {
   const navigate = useNavigate()
@@ -35,6 +51,9 @@ export default function SiteNav() {
   const maintenanceLinks = EQUIPMENT_MAINTENANCE.filter((link) => hasPermission(user, link.module, 'index'))
   const showMaintenance = maintenanceLinks.length > 0
   const showCompliance = hasPermission(user, 'compliance', 'index')
+  const showInspections = hasPermission(user, 'inspections', 'index')
+  const inInspections = ['/departments', '/inspection-visits', '/fleet', '/red-tags']
+    .some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   const inMaintenance = ['/equipment-maintenance', '/maintenance', '/permits']
     .some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 
@@ -47,7 +66,7 @@ export default function SiteNav() {
 
   // Choosing a site is the Sites page's job; there is no site to navigate yet.
   if (storedSite == null || pathname === '/sites' || !facility) return null
-  if (!showCategories && !showMaintenance && !showCompliance) return null
+  if (!showCategories && !showMaintenance && !showCompliance && !showInspections) return null
 
   const counts = Object.fromEntries((overview?.categories ?? []).map((c) => [c.code, c]))
   const go = (path: string) => { setAnchor(null); navigate(path) }
@@ -84,6 +103,16 @@ export default function SiteNav() {
       </Button>
       <Box sx={{ width: '1px', height: 22, bgcolor: palette.borderSlate, flexShrink: 0, mx: 0.25 }} />
 
+      {showInspections && (
+        <Button
+          endIcon={<KeyboardArrowDownRoundedIcon />}
+          aria-haspopup="menu" aria-expanded={anchor?.name === 'inspections'}
+          onClick={(e) => setAnchor({ name: 'inspections', el: e.currentTarget })}
+          sx={tabSx(inInspections)}
+        >
+          Inspections
+        </Button>
+      )}
       {showCategories && (
         <Button
           endIcon={<KeyboardArrowDownRoundedIcon />}
@@ -113,6 +142,20 @@ export default function SiteNav() {
         </Button>
       )}
 
+      <Menu
+        anchorEl={anchor?.el} open={anchor?.name === 'inspections'} onClose={() => setAnchor(null)}
+        PaperProps={{ sx: { borderRadius: '14px', minWidth: 240, mt: 0.5 } }}
+      >
+        {INSPECTION_LINKS.map((link) => (
+          <MenuItem key={link.path} selected={pathname.startsWith(link.path)} onClick={() => go(link.path)}
+                    sx={{ py: 1 }}>
+            <ListItemIcon sx={{ color: palette.brand }}>{link.icon}</ListItemIcon>
+            <ListItemText primary={link.name} secondary={link.description}
+                          primaryTypographyProps={{ fontWeight: 800, fontSize: 14 }}
+                          secondaryTypographyProps={{ fontSize: 12 }} />
+          </MenuItem>
+        ))}
+      </Menu>
       <Menu
         anchorEl={anchor?.el} open={anchor?.name === 'categories'} onClose={() => setAnchor(null)}
         PaperProps={{ sx: { borderRadius: '14px', minWidth: 240, mt: 0.5 } }}

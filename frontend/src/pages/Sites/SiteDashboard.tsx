@@ -11,6 +11,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
+import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
+import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
+import { fetchSiteOverview as fetchInspectionOverview } from '@/api/inspectionProgramme'
+import { CountTile } from '@/pages/Inspections/programme/parts'
 import {
   Box, Breadcrumbs, Button, Link, Skeleton, Stack, Typography,
 } from '@mui/material'
@@ -68,6 +74,11 @@ export default function SiteDashboard() {
     queryFn: () => fetchMaintenanceSummary(siteId),
     enabled: !!siteId && hasPermission(user, 'service-requests', 'index'),
   })
+  const inspections = useQuery({
+    queryKey: ['inspection-overview', siteId],
+    queryFn: () => fetchInspectionOverview(siteId),
+    enabled: !!siteId && hasPermission(user, 'inspections', 'index'),
+  })
   const overview = useQuery({
     queryKey: ['site-overview', siteId],
     queryFn: () => fetchSiteOverview(siteId),
@@ -101,12 +112,18 @@ export default function SiteDashboard() {
           <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>
             {[site?.address, site?.city, site?.state].filter(Boolean).join(', ')}
           </Typography>
+          <Typography sx={{ color: palette.textSubtle, fontWeight: 700, fontSize: 13 }}>
+            {[
+              site?.size_band ? `${site.size_band[0].toUpperCase()}${site.size_band.slice(1)}` : null,
+              site?.beds ? `${site.beds} beds` : null,
+              site?.area_sqft ? `${site.area_sqft.toLocaleString()} sq ft` : null,
+            ].filter(Boolean).join(' · ')}
+          </Typography>
         </Box>
         <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
           {([
             ['details', 'Site details'],
             ['people', 'People here'],
-            ['departments', 'Departments'],
           ] as const).map(([key, label]) => (
             <Button
               key={key} size="small" variant="outlined"
@@ -119,6 +136,69 @@ export default function SiteDashboard() {
           ))}
         </Stack>
       </Stack>
+
+      {hasPermission(user, 'inspections', 'index') && (
+        <Section title="Inspections">
+          <Box sx={{ display: 'flex', gap: 1.2, flexWrap: 'wrap', mb: 1.5 }}>
+            <CountTile label="Passed" value={inspections.data?.counts.passed ?? 0}
+                       tone={{ color: '#15803D', bg: '#F0FDF4' }} />
+            <CountTile label="Failed" value={inspections.data?.counts.failed ?? 0}
+                       tone={{ color: '#B45309', bg: '#FEF3C7' }} />
+            <CountTile label="Red tagged" value={inspections.data?.counts.red_tagged ?? 0}
+                       tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
+            <CountTile label="In progress" value={inspections.data?.counts.in_progress ?? 0}
+                       tone={{ color: '#1D4ED8', bg: '#EFF6FF' }} />
+            <CountTile label="Due" value={inspections.data?.counts.due ?? 0}
+                       tone={{ color: '#92400E', bg: '#FEF3C7' }} />
+            <CountTile label="Overdue" value={inspections.data?.counts.overdue ?? 0}
+                       tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
+          </Box>
+          <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
+            <Tile
+              onClick={() => navigate('/departments')} loading={inspections.isLoading}
+              icon={<DomainOutlinedIcon />} colour={palette.brand} title="Departments"
+              figure={inspections.data ? String(inspections.data.departments.filter((d) => d.id !== null).length) : undefined}
+              facts={inspections.data ? [
+                { text: `${inspections.data.counts.items} item${inspections.data.counts.items === 1 ? '' : 's'}`,
+                  tone: 'plain' as const },
+                ...(inspections.data.counts.not_scheduled
+                  ? [{ text: `${inspections.data.counts.not_scheduled} with no schedule`, tone: 'warning' as const }]
+                  : []),
+              ] : []}
+            />
+            <Tile
+              onClick={() => navigate('/inspection-visits')} loading={inspections.isLoading}
+              icon={<EventAvailableOutlinedIcon />} colour={palette.brand} title="Visits"
+              figure={inspections.data ? String(inspections.data.open_visits) : undefined}
+              facts={inspections.data ? [
+                { text: inspections.data.open_visits ? 'open now' : 'Nothing open', tone: 'plain' as const },
+              ] : []}
+            />
+            <Tile
+              onClick={() => navigate('/fleet')} loading={inspections.isLoading}
+              icon={<LocalShippingOutlinedIcon />} colour={palette.brand} title="Fleet"
+              figure={inspections.data ? String(inspections.data.fleet.vehicles) : undefined}
+              facts={inspections.data ? [
+                { text: `${inspections.data.fleet.vehicles} vehicle${inspections.data.fleet.vehicles === 1 ? '' : 's'}`,
+                  tone: 'plain' as const },
+                ...(inspections.data.fleet.due
+                  ? [{ text: `${inspections.data.fleet.due} due`, tone: 'warning' as const }] : []),
+              ] : []}
+            />
+            <Tile
+              onClick={() => navigate('/red-tags')} loading={inspections.isLoading}
+              icon={<ReportProblemOutlinedIcon />} colour={inspections.data?.red_tags ? palette.danger : palette.brand}
+              title="Red tags"
+              figure={inspections.data ? String(inspections.data.red_tags) : undefined}
+              facts={inspections.data ? [
+                inspections.data.red_tags
+                  ? { text: 'not up to standard', tone: 'danger' as const }
+                  : { text: 'All clear', tone: 'good' as const },
+              ] : []}
+            />
+          </Box>
+        </Section>
+      )}
 
       {showCategories && (
         <Section title={CATEGORIES_LABEL}>

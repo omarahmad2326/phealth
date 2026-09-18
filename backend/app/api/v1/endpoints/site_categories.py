@@ -51,9 +51,48 @@ def _category_of(db: Session, asset: Equipment) -> site_categories.Category:
     return site_categories.BY_CODE[code]
 
 
+def _department_or_422(db: Session, user: User, facility_id: int, department_id: Optional[int]):
+    """The department that answers for an item, checked against its own site."""
+    from app.models.department import Department
+
+    if department_id is None:
+        return None
+    department = db.get(Department, department_id)
+    if department is None or department.facility_id != facility_id:
+        raise HTTPException(status_code=422, detail="That department belongs to another site")
+    return department
+
+
+def _apply_programme(db: Session, user: User, asset: Equipment, changes: dict) -> None:
+    """Put the item in its department and on its inspection clock."""
+    from app.services import inspection_programme as programme
+
+    if "department_id" in changes:
+        department = _department_or_422(db, user, asset.facility_id, changes["department_id"])
+        asset.department_id = department.id if department else None
+    if "pm_task" in changes:
+        asset.pm_task = (changes["pm_task"] or "").strip()[:500] or None
+    if "pm_assignee_id" in changes:
+        person = db.get(User, changes["pm_assignee_id"]) if changes["pm_assignee_id"] else None
+        if changes["pm_assignee_id"] and (person is None or not person.is_active):
+            raise HTTPException(status_code=422, detail="No active person with that id")
+        asset.pm_assignee_id = person.id if person else None
+    if {"frequency", "interval_days", "first_due_on"} & set(changes):
+        programme.apply_schedule(
+            asset,
+            frequency=changes.get("frequency", asset.pm_scheduling),
+            interval_days=changes.get("interval_days", asset.inspection_interval_days),
+            first_due=changes.get("first_due_on"),
+        )
+
+
 def _response(db: Session, asset: Equipment, category: site_categories.Category) -> dict:
+    from app.models.department import Department
+
+    department = db.get(Department, asset.department_id) if asset.department_id else None
     return site_categories.serialise(asset, category, site_categories.job_facts(db, [asset.id]).get(asset.id),
-                                     site_categories.value_facts(db, [asset]).get(asset.id))
+                                     site_categories.value_facts(db, [asset]).get(asset.id),
+                                     department_name=department.name if department else None)
 
 
 # The asset table's cost column is Numeric(10, 2).
@@ -166,11 +205,19 @@ def list_category_equipment(
     ).all()
     facts = site_categories.job_facts(db, [row.id for row in rows])
     values = site_categories.value_facts(db, rows)
+    from app.models.department import Department
+    from app.services import inspection_programme as programme
+
+    names = dict(db.query(Department.id, Department.name).filter(Department.facility_id == facility_id).all())
+    tagged, _ = programme.open_tag_ids(db, facility_id)
     return {
         "category": {"code": category.code, "name": category.name, "colour": category.colour,
                      "types": list(category.types),
                      "default_useful_life_years": site_categories.default_useful_life(category.code)},
-        "items": [site_categories.serialise(row, category, facts.get(row.id), values.get(row.id)) for row in rows],
+        "items": [site_categories.serialise(row, category, facts.get(row.id), values.get(row.id),
+                                            department_name=names.get(row.department_id),
+                                            red_tagged=row.id in tagged) for row in rows],
+        "departments": [{"id": pk, "name": name} for pk, name in sorted(names.items(), key=lambda r: r[1].lower())],
         "total": len(rows),
     }
 
@@ -214,6 +261,9 @@ def add_category_equipment(
         useful_life_years=payload.useful_life_years or site_categories.default_useful_life(category.code),
     )
     _set_cost(asset, payload.unit_cost, payload.quantity)
+    _apply_programme(db, current_user, asset, payload.model_dump(
+        include={"department_id", "frequency", "interval_days", "first_due_on", "pm_task", "pm_assignee_id"},
+        exclude_unset=True))
     db.add(asset)
     db.commit()
     db.refresh(asset)
@@ -268,6 +318,7 @@ def update_category_equipment(
             setattr(asset, field, site_categories.tidy(changes[field]) or "")
     if "notes" in changes:
         asset.description = site_categories.tidy(changes["notes"])
+    _apply_programme(db, current_user, asset, changes)
 
     db.commit()
     db.refresh(asset)

@@ -1,6 +1,6 @@
-from typing import Optional, List
+from typing import Literal, Optional, List
 from datetime import datetime
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class FacilityBase(BaseModel):
@@ -16,6 +16,11 @@ class FacilityBase(BaseModel):
     operating_hours: Optional[str] = None
     tier_id: Optional[int] = None
     tier_ids: Optional[List[int]] = None
+
+    # How big the site is, for the inspection dashboard.
+    beds: Optional[int] = Field(None, ge=0, le=100000)
+    area_sqft: Optional[int] = Field(None, ge=0, le=100000000)
+    size_band: Optional[Literal["small", "medium", "large"]] = None
 
     # General Information
     contact_person: Optional[str] = None
@@ -60,6 +65,9 @@ class FacilityUpdate(BaseModel):
     operating_hours: Optional[str] = None
     tier_id: Optional[int] = None
     tier_ids: Optional[List[int]] = None
+    beds: Optional[int] = Field(None, ge=0, le=100000)
+    area_sqft: Optional[int] = Field(None, ge=0, le=100000000)
+    size_band: Optional[Literal["small", "medium", "large"]] = None
 
     contact_person: Optional[str] = None
     suite: Optional[str] = None

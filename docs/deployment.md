@@ -306,6 +306,18 @@ categories migration. Their presence confirms the migration chain reached the
 end. The Categories screens also create the four category disciplines on first
 use if a database has none.
 
+The inspection programme's own tables arrive with migration `d7f1a3b5c9e2`:
+
+```bash
+docker compose exec postgres psql -U phealth -d phealth_db -c   "select table_name from information_schema.tables
+    where table_name in ('vehicles','red_tags','inspection_form_links') order by 1;"
+```
+
+Three rows means the inspection migration ran. It also adds the department and
+the inspection clock to `equipment`, size to `facilities`, and `RED_TAG` to the
+`inspectionresult` enum. See [inspections.md](inspections.md) for how the
+programme works and what to set up after deploying.
+
 ---
 
 ## 10. Running it day to day

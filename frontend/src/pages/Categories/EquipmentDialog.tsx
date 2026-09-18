@@ -20,8 +20,12 @@ import {
   formatMoney, updateCategoryEquipment, type CategoryCode, type CategoryEquipment, type Condition,
   type ValuePreview,
 } from '@/api/siteCategories'
+import {
+  fetchDepartmentDetail, fetchInspectors, fetchProgrammeDepartments, type Frequency,
+} from '@/api/inspectionProgramme'
 import { CATEGORIES, CONDITION_STYLE } from '@/config/siteCategories'
 import { palette } from '@/theme/palette'
+import { FrequencyFields } from '@/pages/Inspections/programme/parts'
 
 export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -138,6 +142,43 @@ export default function EquipmentDialog({
   const [inService, setInService] = useState(item?.in_service_on ?? '')
   const [life, setLife] = useState(String(item?.useful_life_years != null ? Number(item.useful_life_years) : defaultLife))
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // ── inspections and PM ──────────────────────────────────────────────────
+  // The department answers for the item; one frequency decides when it is
+  // inspected and when its maintenance is raised. Both are prefilled from the
+  // department, so adding an item is still one form and one press.
+  const [departmentId, setDepartmentId] = useState<number | ''>(item?.department_id ?? '')
+  const [frequency, setFrequency] = useState<Frequency | ''>(item?.frequency ?? '')
+  const [intervalDays, setIntervalDays] = useState(item?.interval_days ? String(item.interval_days) : '')
+  const [firstDue, setFirstDue] = useState(item?.next_due_on ?? '')
+  const [pmTask, setPmTask] = useState(item?.pm_task ?? '')
+  const [pmAssignee, setPmAssignee] = useState<number | ''>(item?.pm_assignee_id ?? '')
+  const [touchedSchedule, setTouchedSchedule] = useState(false)
+
+  const departments = useQuery({
+    queryKey: ['programme-departments', facilityId],
+    queryFn: () => fetchProgrammeDepartments(facilityId),
+    staleTime: 60_000,
+  })
+  const inspectors = useQuery({
+    queryKey: ['inspectors', facilityId],
+    queryFn: () => fetchInspectors(facilityId),
+    staleTime: 60_000,
+  })
+  const departmentRows = (departments.data?.items ?? []).filter((row) => row.id !== null)
+  const chosenDepartment = useQuery({
+    queryKey: ['department-detail', departmentId],
+    queryFn: () => fetchDepartmentDetail(departmentId as number),
+    enabled: departmentId !== '',
+    staleTime: 60_000,
+  })
+  const departmentForms = chosenDepartment.data?.forms ?? []
+
+  // A new item takes the department's usual frequency until somebody changes it.
+  useEffect(() => {
+    if (touchedSchedule || editing) return
+    const suggested = departmentForms.find((form) => form.default_frequency)?.default_frequency
+    if (suggested) setFrequency(suggested)
+  }, [departmentForms, touchedSchedule, editing])
 
   // The value is worked out by the same engine as Assets & Value, a moment
   // after typing stops, so the form never shows a figure the ledger disagrees with.
@@ -170,6 +211,10 @@ export default function EquipmentDialog({
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['category-equipment'] })
     queryClient.invalidateQueries({ queryKey: ['category-overview'] })
+    queryClient.invalidateQueries({ queryKey: ['programme-departments'] })
+    queryClient.invalidateQueries({ queryKey: ['department-detail'] })
+    queryClient.invalidateQueries({ queryKey: ['inspection-dashboard'] })
+    queryClient.invalidateQueries({ queryKey: ['inspection-overview'] })
     queryClient.invalidateQueries({ queryKey: ['place-suggestions'] })
     queryClient.invalidateQueries({ queryKey: ['equipment'] })
   }
@@ -188,6 +233,12 @@ export default function EquipmentDialog({
         make: make.trim() || null, model: model.trim() || null, notes: notes.trim() || null,
         unit_cost: figures.unit_cost, in_service_on: figures.in_service_on,
         useful_life_years: figures.useful_life_years,
+        department_id: departmentId === '' ? null : Number(departmentId),
+        frequency: frequency || null,
+        interval_days: frequency === 'custom' && intervalDays ? Number(intervalDays) : null,
+        first_due_on: firstDue || null,
+        pm_task: pmTask.trim() || null,
+        pm_assignee_id: pmAssignee === '' ? null : Number(pmAssignee),
       }
       return item
         ? updateCategoryEquipment(item.id, { ...payload, category: code })
@@ -307,6 +358,55 @@ export default function EquipmentDialog({
               View asset & value history
             </Button>
           )}
+        </Section>
+
+        <Section title="Inspections and PM">
+          <TextField
+            select size="small" label="Department" value={departmentId} sx={{ mb: 1.4 }}
+            onChange={(e) => setDepartmentId(e.target.value === '' ? '' : Number(e.target.value))}
+            InputLabelProps={{ shrink: true }} SelectProps={{ displayEmpty: true }}
+            helperText={departmentRows.length
+              ? 'Who answers for it. It keeps its trade as well.'
+              : 'No departments yet — add one under Inspections first.'}
+          >
+            <MenuItem value="">Not in a department</MenuItem>
+            {departmentRows.map((row) => (
+              <MenuItem key={row.id} value={row.id as number}>{row.name}</MenuItem>
+            ))}
+          </TextField>
+          {departmentForms.length > 0 && (
+            <Typography sx={{ mb: 1.2, fontSize: 12, fontWeight: 700, color: palette.textMuted }}>
+              Inspected on {departmentForms.map((form) => form.name).join(', ')}
+            </Typography>
+          )}
+          <Box sx={{ display: 'grid', gap: 1.4, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, mb: 1.4 }}>
+            <FrequencyFields
+              frequency={frequency} intervalDays={intervalDays}
+              onChange={({ frequency: next, intervalDays: days }) => {
+                setTouchedSchedule(true); setFrequency(next); setIntervalDays(days)
+              }}
+            />
+            <TextField
+              size="small" type="date" label={editing ? 'Next due' : 'First due'} value={firstDue}
+              onChange={(e) => setFirstDue(e.target.value)} InputLabelProps={{ shrink: true }}
+              helperText="Left empty, it is worked out from the frequency"
+            />
+          </Box>
+          <TextField
+            size="small" fullWidth label="Maintenance raised when it falls due" value={pmTask} sx={{ mb: 1.4 }}
+            onChange={(e) => setPmTask(e.target.value)} InputLabelProps={{ shrink: true }}
+            placeholder="Filter change and calibration"
+          />
+          <TextField
+            select size="small" fullWidth label="Assigned to" value={pmAssignee}
+            onChange={(e) => setPmAssignee(e.target.value === '' ? '' : Number(e.target.value))}
+            InputLabelProps={{ shrink: true }} SelectProps={{ displayEmpty: true }}
+          >
+            <MenuItem value="">Nobody yet</MenuItem>
+            {(inspectors.data ?? []).map((person) => (
+              <MenuItem key={person.id} value={person.id}>{person.name}</MenuItem>
+            ))}
+          </TextField>
         </Section>
 
         <TextField

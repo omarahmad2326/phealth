@@ -76,6 +76,30 @@ class Equipment(Base):
     floor = Column(String(80), nullable=True)
     condition = Column(String(24), nullable=True)
 
+    # ── Inspection programme ────────────────────────────────────────────────
+    # The department that answers for this item. It keeps its trade as well:
+    # a chiller is HVAC work and Radiology's problem at the same time.
+    #
+    # The clock is deliberately the one this table already had:
+    # `pm_scheduling` is the frequency, `last_pm_date` when it was last
+    # inspected and `next_generated_pm_date` when it next falls due. A second
+    # set of columns would be a second answer to "when is this due", and the
+    # two would disagree within a week. `inspection_interval_days` is used
+    # only when the frequency is custom.
+    department_id = Column(Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
+    inspection_interval_days = Column(Integer, nullable=True)
+    last_inspection_result = Column(String(16), nullable=True)
+
+    # The maintenance raised when it falls due, one job per item.
+    pm_task = Column(String(500), nullable=True)
+    pm_assignee_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # Which due date has already been acted on: a job raised, a warning sent,
+    # a notice sent. Each one makes the nightly run safe to repeat.
+    pm_raised_on = Column(Date, nullable=True)
+    notified_ahead_on = Column(Date, nullable=True)
+    notified_due_on = Column(Date, nullable=True)
+
     # Consequence of failure for this asset specifically. Usually inherited from
     # the space it serves, and overridable: a generator sitting in an unremarkable
     # yard is critical because of what depends on it, not because of where it is.

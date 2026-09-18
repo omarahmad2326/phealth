@@ -11,6 +11,9 @@ export interface Facility {
   phone: string
   email: string
   timezone: string
+  beds?: number | null
+  area_sqft?: number | null
+  size_band?: 'small' | 'medium' | 'large' | null
   operating_hours: string | null
   tier_id: number | null
   tier_ids?: number[]

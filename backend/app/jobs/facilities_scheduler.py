@@ -5,6 +5,8 @@ if they depend on somebody pressing a button:
 
   * compliance tasks fall due and must be generated, then flipped to overdue
   * maintenance schedules fall due and must raise work orders
+  * inspections fall due: the maintenance is raised and the people who have to
+    act are told, seven days before and on the day
   * approved permits whose window has passed must expire, or an approval given
     for last Tuesday keeps authorising work indefinitely
 
@@ -41,7 +43,7 @@ _stopping = False
 # than logging an exception every interval forever.
 REQUIRED_TABLES = {
     "locations", "compliance_programs", "compliance_tasks",
-    "maintenance_schedules", "work_permits",
+    "maintenance_schedules", "work_permits", "vehicles", "inspection_form_links",
 }
 
 # The system user that owns generated work orders. Generated PM has to be
@@ -73,6 +75,7 @@ def run_once() -> dict[str, object]:
     """One full cycle. Commits once at the end, so a failure part-way leaves
     nothing half-applied."""
     from app.services import compliance as compliance_service
+    from app.services import inspection_due
     from app.services import permit as permit_service
     from app.services import pm as pm_service
 
@@ -102,6 +105,8 @@ def run_once() -> dict[str, object]:
 
         expired = permit_service.expire_stale(db, facility_ids=facility_ids)
 
+        inspections = inspection_due.run(db, facility_ids=facility_ids)
+
         db.commit()
 
         result = {
@@ -110,6 +115,8 @@ def run_once() -> dict[str, object]:
             "compliance_marked_overdue": overdue,
             "work_orders_generated": pm_result["generated"],
             "permits_expired": expired,
+            "inspection_jobs_raised": inspections["jobs_raised"],
+            "inspection_notices_sent": inspections["notified"],
         }
         # Only log when something actually happened. A quiet estate should not
         # produce an identical line every half hour, or nobody reads the log.
