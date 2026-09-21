@@ -376,7 +376,9 @@ const Sidebar = () => {
           onClick={() => openModule('/sites')}
         />
       )}
-      {facility && visibleModules.includes('facilities') && (
+      {/* On Sites you are choosing a site, so the last one visited is not
+          offered; inside a site it is one click back to its dashboard. */}
+      {facility && visibleModules.includes('facilities') && location.pathname !== '/sites' && (
         <RailButton
           label={facility.name} icon={<LocalHospitalOutlinedIcon />}
           active={location.pathname === `/sites/${facility.id}`}
