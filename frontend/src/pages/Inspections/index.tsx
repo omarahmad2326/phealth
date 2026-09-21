@@ -2145,6 +2145,12 @@ const Inspections = () => {
   }
 
   const openEditFormBuilder = (form: InspectionFormOption) => {
+    // A checklist is stored as data, not as a canvas layout. Opened here it
+    // would be read as an empty layout, and saving would wipe it.
+    if ((form.schema as { source?: string } | null)?.source === 'phealth_checklist') {
+      toast.info('This is a standard checklist. It opens as a table during an inspection and is not edited here.')
+      return
+    }
     setFormBuilderMode('edit')
     setFormBuilderId(form.id)
     setFormBuilderName(form.name)

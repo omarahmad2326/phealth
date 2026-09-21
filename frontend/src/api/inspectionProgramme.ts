@@ -115,6 +115,11 @@ export interface VisitItem {
   forms: FormLink[]
   /** The service job this finding raised, when the inspector asked for one. */
   service?: { id: number; number: string; status: string } | null
+  /** Where each checklist stood when the item was recorded. */
+  checklists?: Array<{
+    form_id: number; name: string; total: number; met: number
+    not_met: string[]; not_applicable: number; unanswered: string[]; can_pass: boolean
+  }>
 }
 
 export interface Visit {

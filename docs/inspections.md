@@ -102,6 +102,31 @@ whether the item is due, or whether it is in a department yet:
 * it opens straight away as a visit of one, ready to fill in;
 * recording it moves the item's clock exactly as a scheduled inspection does.
 
+## Checklist forms
+
+Some forms are a regulator's table rather than a drawn layout: indicators, each
+with numbered compliance requirements. These are stored as data
+(`app/services/checklist.py`, `"source": "phealth_checklist"`) and open during
+an inspection as the table they are on paper — indicator, requirement, and
+**Yes / No / N/A** for each.
+
+* A checklist decides whether the inspection can pass: **every requirement
+  answered, none unmet**. Passed stays locked on screen until then, and the
+  server refuses a pass the checklist does not allow. Failed and Red tag can be
+  recorded at any point — one unmet requirement is reason enough.
+* Pairs printed with **OR** on the paper are either-or: meeting one meets both,
+  so a No on the clause that does not apply cannot fail the inspection.
+* **N/A** is for requirements that do not apply here — the ramp on a ground
+  floor, the photograph that is optional for female staff.
+* Where the checklist stood — met, not met, N/A, unanswered — is kept on the
+  inspection.
+
+The first is the **Self-assessment Checklist for MCH Centers and Midwifery
+Services** (indicators 01–07, 26 requirements), added by migration
+`f2b4d6e8a0c1`. Attach it to a department like any other form, or choose it
+with *Inspect it now*. It is not opened in the canvas builder, which would read
+it as an empty layout and overwrite it on save.
+
 ## Red tags
 
 Raised by choosing *Red tag* on an item, which requires a note. The item goes

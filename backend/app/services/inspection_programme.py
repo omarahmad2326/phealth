@@ -229,16 +229,18 @@ def forms_for(db: Session, *, department_id: Optional[int] = None, facility_id: 
     return query.order_by(InspectionFormLink.id.asc()).all()
 
 
-def form_payload(link: InspectionFormLink, form: InspectionForm, *, with_schema: bool = False) -> dict[str, Any]:
-    """One attached form. The built questions travel only where they are filled
-    in: a list of departments does not need every form's layout."""
+def form_payload(link: Optional[InspectionFormLink], form: InspectionForm, *,
+                 with_schema: bool = False) -> dict[str, Any]:
+    """One form. The built questions travel only where they are filled in: a
+    list of departments does not need every form's layout. A form chosen by
+    hand for one inspection has no link."""
     payload = {
-        "link_id": link.id,
+        "link_id": link.id if link else None,
         "form_id": form.id,
         "name": form.name,
         "description": form.description,
-        "default_frequency": link.default_frequency,
-        "default_interval_days": link.default_interval_days,
+        "default_frequency": link.default_frequency if link else None,
+        "default_interval_days": link.default_interval_days if link else None,
         "archived": form.archived_at is not None,
     }
     if with_schema:
@@ -559,6 +561,7 @@ def inspect_now(db: Session, user: User, *, facility_id: int, equipment_id: Opti
         status=InspectionStatus.UPCOMING,
         scheduled_date=when,
         inspection_scope=scope,
+        inspection_frequency=INSPECT_NOW,
         is_instant=True,
         created_at=datetime.utcnow(),
     )
@@ -577,6 +580,7 @@ def inspect_now(db: Session, user: User, *, facility_id: int, equipment_id: Opti
         result=InspectionResult.PENDING,
         scheduled_date=when,
         inspection_scope=scope,
+        inspection_frequency=INSPECT_NOW,
         is_instant=True,
         created_at=datetime.utcnow(),
     ))
@@ -643,12 +647,37 @@ def visit_payload(db: Session, batch: InspectionBatch, *, with_items: bool = Fal
     return payload
 
 
+# Marks an inspection started with Inspect it now, which is filled on exactly
+# the form chosen for it rather than on everything its department uses.
+INSPECT_NOW = "now"
+
+
+def forms_for_inspection(db: Session, inspection: Inspection) -> list:
+    """The forms this inspection is filled on, as (link or None, form) pairs.
+
+    A scheduled visit fills the department's forms (or the fleet's). Inspect it
+    now fills the one form that was chosen, as does an item in no department,
+    whose only form is the one picked for it.
+    """
+    own = db.get(InspectionForm, inspection.form_template_id) if inspection.form_template_id else None
+    chosen_by_hand = (inspection.inspection_frequency == INSPECT_NOW
+                      or (inspection.equipment_id and not inspection.department_id))
+    if chosen_by_hand:
+        return [(None, own)] if own else []
+    if inspection.department_id:
+        links = forms_for(db, department_id=inspection.department_id)
+    elif inspection.vehicle_id:
+        links = forms_for(db, facility_id=inspection.facility_id)
+    else:
+        links = []
+    return links or ([(None, own)] if own else [])
+
+
 def inspection_payload(db: Session, inspection: Inspection) -> dict[str, Any]:
     item = inspection.equipment if inspection.equipment_id else db.get(Vehicle, inspection.vehicle_id)
     department = db.get(Department, inspection.department_id) if inspection.department_id else None
     result = getattr(inspection.result, "value", inspection.result)
-    forms = (forms_for(db, department_id=inspection.department_id) if inspection.department_id
-             else forms_for(db, facility_id=inspection.facility_id))
+    forms = forms_for_inspection(db, inspection)
     return {
         "id": inspection.id,
         "number": inspection.inspection_number,
@@ -664,6 +693,8 @@ def inspection_payload(db: Session, inspection: Inspection) -> dict[str, Any]:
         "result_label": RESULTS.get(result or "", None),
         "answers": (inspection.form_data or {}).get("forms") or [],
         "note": (inspection.form_data or {}).get("note"),
+        # Where each checklist stood when the item was recorded.
+        "checklists": (inspection.form_data or {}).get("checklists") or [],
         "corrective_actions": inspection.corrective_actions,
         "completed_at": inspection.completed_at,
         "service": ({"id": job.id, "number": job.request_number,
@@ -733,7 +764,21 @@ def record_item(db: Session, user: User, inspection: Inspection, *, result: str,
     if item is None:
         raise ProgrammeError("The item this inspection was for no longer exists.", 404)
 
-    inspection.form_data = {"forms": answers or [], "note": (note or "").strip() or None}
+    # A checklist is the regulator's table: it passes only when every
+    # requirement is answered and met. Failing or red-tagging needs no such
+    # completeness - one unmet requirement is reason enough.
+    from app.services import checklist
+
+    checklists = checklist.check_answers(
+        [(form.id, form.name, form.schema) for _, form in forms_for_inspection(db, inspection)], answers)
+    if result == "pass":
+        blocking = [entry for entry in checklists if not entry["can_pass"]]
+        if blocking:
+            raise ProgrammeError("This cannot pass yet - {}: {}.".format(
+                blocking[0]["name"], checklist.summary_line(blocking[0])))
+
+    inspection.form_data = {"forms": answers or [], "note": (note or "").strip() or None,
+                            "checklists": checklists}
     inspection.result = InspectionResult(result)
     inspection.status = InspectionStatus.COMPLETED
     inspection.completed_at = datetime.utcnow()

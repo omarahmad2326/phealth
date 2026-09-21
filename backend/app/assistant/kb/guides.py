@@ -85,6 +85,11 @@ Nothing is created when an item falls due. The people who have to act - the pers
 Scheduling is for what falls due. To inspect one thing there and then, press Inspect it now - the tick-list icon on any equipment row under Facility, on any item in a department, or on any vehicle in the Fleet - or press New inspection on Inspections > Visits and choose the Category and the Equipment.
 It asks only for Inspect on (the form) and, if you want, a Date and an Inspector. The form is already chosen when the item is in a department that has one; an item that is in no department can still be inspected by choosing any form from the library. Press Start inspection and it opens straight away for filling in, whether or not it was due. Recording it moves the item's next date on exactly as a scheduled inspection does.
 
+## Checklist forms
+Some forms are a regulator's checklist, such as the Self-assessment Checklist for MCH Centers and Midwifery Services. During an inspection they open as the table on the paper: Indicator No. & Details, Compliance Requirements, and Yes, No or N/A for each requirement. The bar at the top counts what is met, not met and N/A.
+Passed stays locked until every requirement is answered and none is unmet; Failed or Red tag can be recorded at any time. Requirements printed with OR on the paper, such as 2.1 and 2.2, are either-or: meeting one is enough. Use N/A for a requirement that does not apply, such as a ramp at a ground-floor centre.
+Attach the checklist to a department under Inspected on, or choose it in Inspect on when you Inspect it now.
+
 ## Fill in a visit
 The visit lists its items. Open one, answer the department's forms - each question is Pass, Fail or N/A, or a value to type - add Notes, then press Passed, Failed or Red tag. It is built for a phone.
 A red tag needs a note saying what is wrong. Ticking Raise a service job for this creates one service job for the item, titled from your note and linked back to the inspection; leave it unticked if you have already fixed it. Press Finish visit when you are done - items nobody reached stay due and appear on the next visit.

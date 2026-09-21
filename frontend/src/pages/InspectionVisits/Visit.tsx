@@ -23,6 +23,10 @@ import {
 } from '@/api/inspectionProgramme'
 import { palette } from '@/theme/palette'
 import { builtFields, ResultChip } from '@/pages/Inspections/programme/parts'
+import ChecklistTable from '@/pages/Inspections/programme/ChecklistTable'
+import {
+  checklistSummary, evaluateChecklist, isChecklist,
+} from '@/pages/Inspections/programme/checklist'
 
 const RESULT_BUTTONS: Array<{ value: Result; label: string; color: string; bg: string }> = [
   { value: 'pass', label: 'Passed', color: '#15803D', bg: '#F0FDF4' },
@@ -209,9 +213,24 @@ function ItemPanel({ visitId, item, readOnly, onClose, onRecorded, onProblem }: 
   const set = (formId: number, key: string, value: string) =>
     setAnswers((prev) => ({ ...prev, [String(formId)]: { ...(prev[String(formId)] ?? {}), [key]: value } }))
 
+  // A checklist is the regulator's table and decides whether this can pass:
+  // every requirement answered, none unmet. The server holds the same rule.
+  const checklists = item.forms
+    .filter((form) => isChecklist(form.schema))
+    .map((form) => ({
+      form,
+      result: evaluateChecklist(form.schema as never, answers[String(form.form_id)] ?? {}),
+    }))
+  const passBlocked = checklists.find(({ result: tally }) => !tally.canPass)
+  const suggested: Result | null = checklists.length
+    ? (checklists.every(({ result: tally }) => tally.canPass) ? 'pass'
+      : checklists.some(({ result: tally }) => tally.notMet.length) ? 'fail' : null)
+    : null
+
   return (
     <Dialog open onClose={onClose} fullWidth fullScreen={window.innerWidth < 600}
-            PaperProps={{ sx: { borderRadius: { xs: 0, sm: '18px' }, maxWidth: 620 } }}>
+            PaperProps={{ sx: { borderRadius: { xs: 0, sm: '18px' },
+                                maxWidth: item.forms.some((form) => isChecklist(form.schema)) ? 1040 : 620 } }}>
       <DialogTitle sx={{ fontWeight: 900, pr: 6 }}>
         {item.name}
         <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: palette.textMuted }}>
@@ -223,7 +242,20 @@ function ItemPanel({ visitId, item, readOnly, onClose, onRecorded, onProblem }: 
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2}>
-          {fields.map(({ form, fields: questions }) => (
+          {fields.map(({ form, fields: questions }) => isChecklist(form.schema) ? (
+            <Box key={form.form_id}>
+              <Typography sx={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.4, textTransform: 'uppercase',
+                                color: palette.textSubtle, mb: 0.8 }}>
+                {form.name}
+              </Typography>
+              <ChecklistTable
+                schema={form.schema} readOnly={readOnly}
+                answers={answers[String(form.form_id)] ?? {}}
+                onChange={(code, value) => set(form.form_id, code, value)}
+              />
+              <Divider sx={{ mt: 2 }} />
+            </Box>
+          ) : (
             <Box key={form.form_id}>
               <Typography sx={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.4, textTransform: 'uppercase',
                                 color: palette.textSubtle, mb: 0.8 }}>
@@ -296,18 +328,25 @@ function ItemPanel({ visitId, item, readOnly, onClose, onRecorded, onProblem }: 
             </Stack>
           )}
 
+          {!readOnly && passBlocked && (
+            <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: palette.textMuted }}>
+              Passed opens once the checklist allows it — {checklistSummary(passBlocked.result).toLowerCase()}.
+              Failed or Red tag can be recorded now.
+            </Typography>
+          )}
           {!readOnly && (
             <Stack direction="row" spacing={1}>
               {RESULT_BUTTONS.map((button) => (
                 <Button
                   key={button.value}
                   onClick={() => { setResult(button.value); setProblem(''); record.mutate(button.value) }}
-                  disabled={record.isPending}
+                  disabled={record.isPending || (button.value === 'pass' && Boolean(passBlocked))}
                   sx={{
                     flex: 1, py: 1.2, fontWeight: 900, borderRadius: '12px',
                     color: button.color, bgcolor: button.bg,
-                    border: `1.5px solid ${result === button.value ? button.color : 'transparent'}`,
+                    border: `1.5px solid ${(result || suggested) === button.value ? button.color : 'transparent'}`,
                     '&:hover': { bgcolor: button.bg, filter: 'brightness(0.97)' },
+                    '&.Mui-disabled': { opacity: 0.45, color: button.color, bgcolor: button.bg },
                   }}
                 >
                   {record.isPending && result === button.value
