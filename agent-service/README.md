@@ -34,25 +34,32 @@ permission and site-scoping helpers.
 
 ## What it can do
 
-**Look things up** (read-only tools): sites, buildings, floors and rooms; the
-fixtures in them and which are broken; assets - machinery, clinical equipment
-and room items; work orders by trade, room, asset or missed deadline;
-maintenance plans and compliance tasks due or overdue; book value; plus the
-inherited commerce data (sales, rentals, billing), users and attendance.
+**Look things up** (read-only tools): how inspections stand - what passed,
+failed, is red-tagged, in progress, due or overdue, per site, department or the
+fleet, and each site's status (Passed all, Passed, Failed, Not inspected yet),
+from the same classification the cards use; inspection visits scheduled, open
+and done; each site's equipment by category and department, with its value;
+service jobs; sites, buildings, floors and rooms, their fixtures and assets;
+work orders; compliance tasks due or overdue; plus the inherited commerce data
+(sales, rentals, billing), users and attendance.
 
 **Explain** from the knowledge base: how to use phealth (generated from the
 code at every backend start) and the hospital's own documents - policies,
 procedures, manuals - uploaded per site from *Assistant documents*. Answers
 name the document and page.
 
-**Prepare, for confirmation**: equipment added to Electrical, Plumbing,
-Mechanical or HVAC, or changed (status, name, type, category, place, quantity,
-make, model, purchase cost, in-service date, useful life, notes); a service or
-inspection job raised on it, or updated (status, due date, assignee, notes,
-pass/fail and findings, labour and parts cost); a work order for a fault on a
-fixture, an asset or a room; a service booking with a technician; a recurring
-inspection plan; an update to any other work order (status, technician,
-priority, note).
+**Prepare, for confirmation**: an inspection visit for a department, the whole
+site or the fleet on a date, with an inspector; inspecting one item now; a red
+tag cleared with what was done; how often something is inspected; equipment
+added to a category in its department, or changed (department, status, name,
+type, category, quantity, make, model, purchase cost, in-service date, useful
+life, notes); a department; a vehicle for the fleet; a new site; a service job
+raised on equipment at fault, or updated (status, due date, assignee, notes,
+labour and parts cost); a work order for a fault on a fixture, an asset or a
+room; a service booking; an update to any other work order. Departments,
+people, equipment, vehicles and forms are named the way people say them and
+found by the backend, so a conversation never needs the database's ids. An
+inspection is never raised as a job.
 
 Instructions are acted on, not explained: "add a chiller to HVAC" prepares the
 change even when the router files it as a how-to question or a refusal. When a
@@ -71,7 +78,11 @@ refresh once a change is made.
   has.
 - **Out of reach entirely:** deleting records, ledger entries (including marking
   a job as major work, which posts one), users and
-  permissions.
+  permissions, uploading files, and compliance tasks.
+- **Plain words only.** Every reply - streamed, spoken, a question back or an
+  error - passes through `app/plain.py`, which removes internal ids, tool and
+  field names, JSON, app addresses and error traces. The prompts ask the same;
+  the filter makes sure. A change that fails says so plainly on its card.
 - **No invented numbers.** Totals come from SQL `COUNT` and aggregates, never
   from the model counting rows.
 - **Site isolation.** A question inside a site defaults to that site; a site's

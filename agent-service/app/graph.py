@@ -30,6 +30,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.config import settings
 from app.medrad_client import MedRadClient, MedRadError
+from app.plain import PlainStream, plain_text
 from app.providers import complete, stream_text
 from app.prompts import (
     chitchat_prompt,
@@ -146,7 +147,7 @@ how-many count total number active open closed pending approved
 # An instruction goes where the prepare_* actions are; whether one fits is then
 # the tool model's decision, with the full toolset in front of it.
 _CHANGE_VERBS = frozenset("""
-add create raise book schedule report log
+add create raise book schedule report log inspect clear lift
 mark set change update edit rename move assign reassign unassign
 close complete finish reopen record enter register put
 """.split())
@@ -340,6 +341,9 @@ async def _stream_text(
         writer = None
 
     collected: list[str] = []
+    # Released a sentence at a time with ids, tool names and code taken out,
+    # because what streams is also what is read aloud.
+    plain = PlainStream()
     async for delta in stream_text(
         system=system,
         messages=[*(history or []), {"role": "user", "content": user_content}],
@@ -347,9 +351,13 @@ async def _stream_text(
         role=role,
     ):
         collected.append(delta)
-        if writer is not None:
-            writer({"type": "token", "text": delta})
-    return "".join(collected).strip()
+        ready = plain.push(delta)
+        if writer is not None and ready:
+            writer({"type": "token", "text": ready})
+    tail = plain.flush()
+    if writer is not None and tail:
+        writer({"type": "token", "text": tail})
+    return plain_text("".join(collected))
 
 
 _CLASSIFY_TOOL = {
@@ -503,7 +511,8 @@ async def retrieve_node(state: AgentState) -> dict[str, Any]:
                 query, limit=6, facility_id=state.get("facility_id"),
             )
         except MedRadError as exc:
-            return {"knowledge": [], "errors": [str(exc)]}
+            logger.warning("Knowledge search failed: %s", exc)
+            return {"knowledge": [], "errors": ["The how-to guides could not be searched."]}
 
     results = payload.get("results", [])
     citations = [{
@@ -526,8 +535,14 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
         try:
             available, tool_modules, action_tools = await client.list_tools()
         except MedRadError as exc:
-            return {"tool_results": [], "errors": [str(exc)]}
+            logger.warning("Listing tools failed: %s", exc)
+            return {"tool_results": [], "errors": ["The live data could not be reached."]}
         action_names = {tool["name"] for tool in action_tools}
+        # A change is made at the site the person is working in unless they
+        # named another. Models forget to say so, and the change was then
+        # refused for want of a site nobody had asked them for.
+        takes_site = {tool["name"] for tool in action_tools
+                      if "facility_id" in ((tool.get("input_schema") or {}).get("properties") or {})}
 
         module = state.get("module")
         # Narrowing exists because selection accuracy degrades once a model is
@@ -572,9 +587,9 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                     messages=conversation,
                     role="tools",
                 )
-            except Exception as exc:
+            except Exception:
                 logger.exception("Model call failed during tool loop")
-                errors.append("The assistant model was unavailable: {}".format(exc))
+                errors.append("The assistant model did not respond.")
                 break
 
             blocks = [
@@ -605,6 +620,10 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
             # A turn that asks for several tools asked for them together, and
             # they do not depend on each other. Running them one after another
             # added up every round trip for no reason.
+            for block in runnable:
+                if (block["name"] in takes_site and state.get("facility_id")
+                        and not (block["input"] or {}).get("facility_id")):
+                    block["input"] = {**(block["input"] or {}), "facility_id": state["facility_id"]}
             outcomes = await asyncio.gather(*(
                 (client.prepare_action(block["name"], block["input"]) if block["name"] in action_names
                  else client.call_tool(block["name"], block["input"]))
@@ -630,7 +649,8 @@ async def tools_node(state: AgentState) -> dict[str, Any]:
                     if not isinstance(outcome, MedRadError):
                         raise outcome
                     if not outcome.recoverable:
-                        errors.append(str(outcome))
+                        logger.warning("Tool %s failed: %s", block["name"], outcome)
+                        errors.append("A lookup could not be completed.")
                     tool_results_content.append({
                         "type": "tool_result",
                         "tool_use_id": block["id"],
@@ -730,7 +750,7 @@ def _evidence_payload(state: AgentState) -> str:
 
 def _question_back(state: AgentState) -> Optional[str]:
     """What the tool step still needs to know from the person, if it asked."""
-    reply = (state.get("tool_reply") or "").strip()
+    reply = plain_text((state.get("tool_reply") or "").strip())
     return reply[:600] if "?" in reply else None
 
 
@@ -743,7 +763,7 @@ def _reply_without_evidence(state: AgentState) -> Optional[str]:
     reply with figures in it but no question is not used: every figure has to
     come from a tool result, and this one had none.
     """
-    reply = (state.get("tool_reply") or "").strip()
+    reply = plain_text((state.get("tool_reply") or "").strip())
     if not reply:
         return None
     if "?" in reply or not re.search(r"\d", reply):
@@ -761,7 +781,7 @@ async def synthesize_node(state: AgentState) -> dict[str, Any]:
             return {"answer": own_words}
         errors = state.get("errors") or []
         if errors:
-            return {"answer": lookup_failed_message(errors[0], spoken)}
+            return {"answer": lookup_failed_message(spoken)}
         return {"answer": nothing_found_message(spoken)}
 
     try:
@@ -785,9 +805,9 @@ async def synthesize_node(state: AgentState) -> dict[str, Any]:
             _history_messages(state),
         )
         return {"answer": text or nothing_found_message(bool(state.get("voice")))}
-    except Exception as exc:
+    except Exception:
         logger.exception("Synthesis failed")
-        return {"answer": lookup_failed_message(str(exc), bool(state.get("voice")))}
+        return {"answer": lookup_failed_message(bool(state.get("voice")))}
 
 
 async def refuse_node(state: AgentState) -> dict[str, Any]:
@@ -815,7 +835,7 @@ async def chitchat_node(state: AgentState) -> dict[str, Any]:
 
 
 async def clarify_node(state: AgentState) -> dict[str, Any]:
-    return {"answer": state.get("answer") or clarify_fallback(bool(state.get("voice")))}
+    return {"answer": plain_text(state.get("answer") or "") or clarify_fallback(bool(state.get("voice")))}
 
 
 async def gather_node(state: AgentState) -> dict[str, Any]:
@@ -944,7 +964,8 @@ async def run_agent(
     )
     yield {
         "event": "answer",
-        "answer": final.get("answer", ""),
+        # Every path to an answer is cleaned already; this is the last word on it.
+        "answer": plain_text(final.get("answer", "")),
         "timings": timings,
         "citations": _dedupe(final.get("citations") or []),
         "intent": final.get("intent"),

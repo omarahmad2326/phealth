@@ -397,6 +397,83 @@ def test_go_ahead_after_an_offer_is_not_small_talk():
     print("ok  'go ahead' after an offer goes to the tools; 'ok thanks' is still small talk")
 
 
+def test_answers_never_show_ids_tool_names_or_code():
+    """What reaches the person is in the screens' words, whatever the model wrote."""
+    from app.plain import plain_text
+
+    cleaned = {
+        "Generator 1 (asset_id 12) is overdue.": "Generator 1 is overdue.",
+        "I found 3 items using category_equipment: CT scanner GE-01 (ID: 44).": "I found 3 items: CT scanner GE-01.",
+        "I used the prepare_inspection_visit tool to prepare it. Press Confirm.": "Press Confirm.",
+        "The `total_count` is 5 and 2 are `needs_attention`.": "The total count is 5 and 2 are needs attention.",
+        "Open it at /inspection-visits/12 to fill it in.": "Open it to fill it in.",
+        "I need its ZIP code (zip_code) and email.": "I need its ZIP code and email.",
+        "The lookup failed with HTTP 422 Unprocessable Entity. Try naming the site.": "Try naming the site.",
+        "Result: {\"total_count\": 5} so five.": "Result: so five.",
+        "```json\n{\"a\": 1}\n```\nDone.": "Done.",
+    }
+    for raw, expected in cleaned.items():
+        assert plain_text(raw) == expected, (raw, plain_text(raw))
+    kept = ("Visit INS-2026-0012 on 2026-09-28 covers TPF-000005, costing $45,000.",
+            "Email ali_raza@example.com about SR-001709-Q01.",
+            "ID card readers work 24/7 and the idea is valid.")
+    for text in kept:
+        assert plain_text(text) == text, (text, plain_text(text))
+    print("ok  answers never show ids, tool or field names, addresses, JSON or error codes")
+
+
+def test_a_leaky_answer_is_cleaned_while_it_streams():
+    """The streamed words are also read aloud, so they are cleaned before they are sent."""
+    tools = _Scripted([
+        AIMessage(content="", tool_calls=[{"name": "category_equipment", "args": {"facility_id": 7}, "id": "t1"}]),
+        AIMessage(content="Done."),
+    ])
+    writer = _Scripted([AIMessage(content=(
+        "Generator 1 (asset_id 12) is overdue. I used the category_equipment tool to check. "
+        "Its next date was 2026-09-01."))])
+    events = _run_with({"router": _route("database"), "tools": tools, "synthesis": writer}, _Backend,
+                       "is the generator overdue?", facility_id=7, facility_name="Lahore Office")
+    streamed = "".join(e["text"] for e in events if e.get("event") == "token")
+    answer = events[-1]["answer"]
+    for text in (streamed, answer):
+        assert "asset_id" not in text and "category_equipment" not in text and " 12" not in text, text
+    assert answer == "Generator 1 is overdue. Its next date was 2026-09-01.", answer
+    assert streamed.strip() == answer, (streamed, answer)
+    print("ok  a leaky answer is cleaned sentence by sentence as it streams, and whole at the end")
+
+
+def test_a_question_back_names_things_not_ids():
+    tools = _Scripted([AIMessage(content=(
+        "Which one - asset_id 12 (Generator 1, TPF-000004) or asset_id 15 (Generator 2, TPF-000009)?"))])
+    events = _run_with({"router": _route("database"), "tools": tools, "synthesis": _Scripted([])}, _Backend,
+                       "inspect the generator now", facility_id=7, facility_name="Lahore Office")
+    answer = events[-1]["answer"]
+    assert "asset_id" not in answer and "Generator 1, TPF-000004" in answer, answer
+    print("ok  a question back names the choices, not their ids")
+
+
+def test_a_failure_is_told_plainly():
+    class _Down:
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        async def ainvoke(self, messages):
+            raise RuntimeError("upstream 503: connection reset by peer at 10.0.0.4:8000")
+
+    events = _run_with({"router": _route("database"), "tools": _Down(), "synthesis": _Scripted([])}, _Backend,
+                       "what failed today?", facility_id=7, facility_name="Lahore Office")
+    answer = events[-1]["answer"]
+    assert answer == "I could not look that up just now. Please try again in a moment.", answer
+    assert all("503" not in error and "10.0.0.4" not in error for error in events[-1]["errors"])
+    print("ok  when the model or a lookup fails, the person is told plainly and never shown the error")
+
+
+def test_inspecting_and_clearing_are_instructions():
+    for said in ("inspect generator 1 now", "please clear the red tag on the x-ray", "register a site called Mark-3"):
+        assert graph.instruction_verb(said) is not None, said
+    print("ok  'inspect', 'clear' and 'register' are instructions to prepare, not questions")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

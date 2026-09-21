@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.assistant.tools import analytics, attendance, commerce, entities, facilities
+from app.assistant.tools import analytics, attendance, commerce, entities, facilities, inspections
 from app.assistant.tools.base import ToolContext, ToolResult
 from app.models.inspection import InspectionStatus
 from app.models.invoice import InvoiceStatus, InvoiceType
@@ -35,10 +35,10 @@ _TRADE = {
              "medical_gas", "building_envelope", "it_low_voltage", "biomedical"],
     "description": "Trade code.",
 }
-# The four categories a site's equipment is filed under.
+# The categories a site's equipment is filed under, under Facility.
 _CATEGORY = {
     "type": "string",
-    "enum": ["electrical", "plumbing", "mechanical", "hvac"],
+    "enum": ["electrical", "plumbing", "mechanical", "hvac", "building", "landscaping", "parking"],
     "description": "Equipment category.",
 }
 _LIMIT = {"type": "integer", "minimum": 1, "maximum": 100, "default": 25}
@@ -128,8 +128,10 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         name="search_inspections",
         module="inspections",
         description=(
-            "Find or count inspections, optionally by inspector, facility, status "
-            "and date. Counts inspection VISITS (batches) by default, which is "
+            "Count inspection visits by inspector, site, status and date - for 'how many "
+            "inspections did Ali do in May'. For what passed, failed, is red-tagged, due or "
+            "overdue use inspection_status; to list scheduled or finished visits use "
+            "inspection_visits. Counts inspection VISITS (batches) by default, which is "
             "what the Inspections module displays and what people mean by 'how "
             "many inspections'. Each visit covers many assets, so the per-asset "
             "figure is much larger and is always returned alongside in "
@@ -565,16 +567,19 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         name="category_equipment",
         module="facility-inventory",
         description=(
-            "A site's equipment under its categories - Electrical, Plumbing, Mechanical, "
-            "HVAC - with where exactly each is (building, floor, spot), its condition "
-            "(Working, Needs attention, Out of service), open jobs and next service date. "
-            "aggregates.by_category counts every category. Use this for 'what HVAC "
-            "equipment do we have', 'what needs attention', 'where is the generator'."
+            "A site's equipment under Facility, by category - Electrical, Plumbing, "
+            "Mechanical, HVAC, Building, Landscaping, Parking - with the department each "
+            "belongs to, quantity, condition (Working, Needs attention, Out of service), "
+            "open service jobs, book value and cost of ownership. aggregates.by_category "
+            "counts every category. Use this for 'what HVAC equipment do we have', 'what is "
+            "in Radiology', 'what needs attention', 'what is the generator worth'."
         ),
         parameters={"type": "object", "properties": {
             "facility_id": {"type": "integer"},
             "category": _CATEGORY,
             "condition": {"type": "string", "enum": ["working", "needs_attention", "out_of_service"]},
+            "department": {"type": "string", "description": "A department's name, or 'none' for "
+                                                             "equipment in no department."},
             "building": {"type": "string"},
             "query": {"type": "string", "description": "Name, type, tag, floor or spot."},
             "limit": _LIMIT,
@@ -585,10 +590,11 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         name="equipment_jobs",
         module="service-requests",
         description=(
-            "Service or inspection jobs on a site's category equipment (Equipment "
-            "Maintenance). kind=service or kind=inspection. status: open, in_progress, "
-            "done or overdue. Each job has the equipment, where it is, due date, who it "
-            "is assigned to and, for inspections, pass or fail. aggregates.by_status counts them."
+            "Service jobs on a site's equipment - work raised because something is at "
+            "fault (the Service screen). Use kind=service. kind=inspection only finds "
+            "old-style inspection jobs from before inspections moved to each item's own "
+            "schedule; for inspections use inspection_status or inspection_visits. status: "
+            "open, in_progress, done or overdue. aggregates.by_status counts them."
         ),
         parameters={"type": "object", "properties": {
             "facility_id": {"type": "integer"},
@@ -629,8 +635,11 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
         name="maintenance_due",
         module="maintenance",
         description=(
-            "Maintenance plans falling due in the next N days, or already overdue "
-            "with overdue_only=true. aggregates.overdue counts those past due."
+            "Older maintenance plans on register assets that are not in the inspection "
+            "programme. It does NOT cover equipment in departments or vehicles: what is "
+            "due or overdue for inspection or maintenance there is inspection_status with "
+            "state=due or state=overdue. Plans falling due in the next N days, or overdue "
+            "with overdue_only=true."
         ),
         parameters={"type": "object", "properties": {
             "facility_id": {"type": "integer"},
@@ -655,6 +664,51 @@ TOOL_DEFINITIONS: tuple[ToolDefinition, ...] = (
             "limit": _LIMIT,
         }},
         handler=facilities.compliance_due,
+    ),
+    ToolDefinition(
+        name="inspection_status",
+        module="inspections",
+        description=(
+            "How inspections stand - the numbers on the Sites page and a site's dashboard. "
+            "Every piece of equipment in a department, and every vehicle, is inspected on "
+            "its own schedule; its latest result counts. Without state: each site's status "
+            "(Passed all, Passed, Failed, Not inspected yet), its counts (passed, failed, "
+            "red_tagged, in_progress, due, overdue, not_scheduled) and each department's "
+            "passed out of total; aggregates.sites_by_status counts sites. With state: the "
+            "items in that state, each with its department, last result, next due date and, "
+            "for red tags, the reason. Due means within 30 days. Use this for 'what failed', "
+            "'what is overdue', 'what is red-tagged', 'how is Radiology doing', 'which sites "
+            "passed', 'what is due for inspection or maintenance'."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer", "description": "One site; leave out for every site."},
+            "state": {"type": "string", "enum": ["passed", "failed", "red_tagged", "in_progress", "due",
+                                                  "overdue", "not_scheduled"]},
+            "department": {"type": "string", "description": "A department's name."},
+            "kind": {"type": "string", "enum": ["equipment", "vehicle"],
+                     "description": "vehicle for the fleet only."},
+            "limit": _LIMIT,
+        }},
+        handler=inspections.inspection_status,
+    ),
+    ToolDefinition(
+        name="inspection_visits",
+        module="inspections",
+        description=(
+            "Inspection visits: status=open for scheduled or in progress, status=done for "
+            "finished ones, optionally for one department and a date range. Each visit has "
+            "its number, what it covers (a department, the whole site or the fleet), its "
+            "date, inspector, how many items it holds and has done, and its result."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer"},
+            "status": {"type": "string", "enum": ["open", "done"]},
+            "department": {"type": "string", "description": "A department's name."},
+            "date_from": _DATE,
+            "date_to": _DATE,
+            "limit": _LIMIT,
+        }},
+        handler=inspections.inspection_visits,
     ),
 )
 

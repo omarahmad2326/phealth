@@ -173,7 +173,7 @@ def test_phia_prepares_a_service_that_only_confirm_raises():
     assert done.status == "executed", (done.status, done.error)
     job = db.get(ServiceRequest, done.result["work_order_id"])
     assert job.work_order_type == WorkOrderType.PREVENTIVE.value and job.due_on.isoformat() == due
-    assert job.assigned_technician_id == people["sam"].id and done.result["route"] == "/equipment-maintenance/service"
+    assert job.assigned_technician_id == people["sam"].id and done.result["route"] == "/service"
 
     old = Equipment(facility_id=site.id, asset_tag="OLD-1", make="", model="", serial_number="")
     db.add(old)

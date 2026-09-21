@@ -102,11 +102,11 @@ async def stream_run(
                 facility_name=payload.facility_name,
             ):
                 yield {"event": event.get("event", "message"), "data": json.dumps(event)}
-        except Exception as exc:  # noqa: BLE001 - surface as a stream error, never a 500 mid-stream
+        except Exception:  # noqa: BLE001 - surface as a stream error, never a 500 mid-stream
             logger.exception("Agent run failed")
             yield {
                 "event": "error",
-                "data": json.dumps({"error": "The assistant failed: {}".format(exc)}),
+                "data": json.dumps({"error": "Something went wrong answering that. Please try again in a moment."}),
             }
 
     return EventSourceResponse(event_source())

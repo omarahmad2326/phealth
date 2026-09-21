@@ -1,10 +1,11 @@
 """Actions the assistant can prepare for a person to confirm.
 
 The changes a person makes on the everyday screens: add equipment to a
-category or change its details (including what one item cost), raise a service
-or inspection job or update one (status, result, labour and parts cost), report
-a fault, book an asset for service, set how often something is inspected, and
-update a work order. Each touches one record, which the product can change back.
+category or change its details (its department, what one item cost), raise a
+service job or update one (status, labour and parts cost), report a fault, book
+an asset for service, set how often something is inspected, schedule an
+inspection visit, inspect one item now, clear a red tag, add a department or a
+vehicle, register a site, and update a work order. Each touches one record.
 Deleting, bulk changes, ledger entries and anything about users or permissions
 stay on their own screens, with their own previews; so does marking a job as
 major work, which posts to the ledger.
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -44,6 +46,8 @@ from app.models.location import Location
 from app.models.service_request import Priority, ServiceRequest, ServiceRequestStatus
 from app.models.user import User, UserRole
 from app.utils.clock import utc_today
+
+logger = logging.getLogger("assistant.actions")
 
 PROPOSAL_LIFETIME = timedelta(minutes=10)
 PRIORITIES = [p.value for p in Priority]
@@ -444,9 +448,14 @@ def _prepare_equipment_job(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
     asset = _asset(ctx, args.get("asset_id"))
     if asset.name is None:
         raise ToolInputError("That asset is not in a site category. Find it with category_equipment.")
-    kind = args.get("kind")
+    kind = args.get("kind") or "service"
+    if kind == "inspection":
+        # Inspections are no longer jobs: each item is inspected on its own
+        # schedule, and a job of that kind would sit where no screen shows it.
+        raise ToolInputError("Inspections are not raised as jobs any more. To inspect this item now use "
+                             "prepare_inspect_now; to schedule a visit use prepare_inspection_visit.")
     if kind not in equipment_jobs.KINDS:
-        raise ToolInputError("kind is service or inspection.")
+        raise ToolInputError("kind is service.")
     title = _description(args.get("what_needs_doing"))[:500]
     due_on = None
     if args.get("due_on"):
@@ -489,7 +498,7 @@ def _execute_equipment_job(db: Session, user: User, payload: dict[str, Any]) -> 
         assigned_to_id=payload.get("assigned_to_id"),
     ), db=db, current_user=user)
     return {"message": "{} {} raised on {}.".format(payload["kind"].capitalize(), job["number"], asset.name),
-            "record": job["number"], "route": "/equipment-maintenance/{}".format(payload["kind"]),
+            "record": job["number"], "route": "/service",
             "work_order_id": job["id"], "facility_id": asset.facility_id}
 
 
@@ -706,7 +715,16 @@ def _prepare_equipment_update(ctx: ToolContext, args: dict[str, Any]) -> Prepare
 
     asset = _category_item(ctx, args.get("asset_id"))
     code = _category_code(ctx, asset)
-    wanted = _equipment_fields(ctx, {k: v for k, v in args.items() if k != "asset_id"}, asset.facility_id)
+    wanted = _equipment_fields(ctx, {k: v for k, v in args.items() if k not in ("asset_id", "department")},
+                               asset.facility_id)
+    # Moving it to another department, or out of any.
+    from app.models.department import Department
+
+    current_department = ctx.db.get(Department, asset.department_id) if asset.department_id else None
+    new_department = current_department
+    if "department" in args:
+        text = str(args["department"]).strip()
+        new_department = None if text.lower() in _NO_DEPARTMENT else _department_named(ctx, asset.facility_id, text)
     value = site_categories.value_facts(ctx.db, [asset]).get(asset.id) or {}
     current: dict[str, Any] = {
         "category": code, "name": asset.name, "type": asset.equipment_type, "building": asset.building,
@@ -719,6 +737,9 @@ def _prepare_equipment_update(ctx: ToolContext, args: dict[str, Any]) -> Prepare
         if asset.useful_life_years is not None else None,
     }
     changes = {k: v for k, v in wanted.items() if str(v) != str(current.get(k))}
+    moved = (new_department.id if new_department else None) != (current_department.id if current_department else None)
+    if moved:
+        changes["department_id"] = new_department.id if new_department else None
     if not changes:
         raise ToolInputError("Nothing to change: {} already has those details. Say what should change.".format(asset.name))
     _checked(CategoryEquipmentUpdate, changes)
@@ -745,10 +766,25 @@ def _prepare_equipment_update(ctx: ToolContext, args: dict[str, Any]) -> Prepare
             return str(Decimal(str(raw)).normalize())
         return str(raw)
 
-    lines = [("Equipment", "{} · {}".format(asset.name, asset.asset_tag)),
-             ("Where", site_categories.location_label(asset) or "Not recorded")]
-    lines += [(labels[k], "{} → {}".format(shown(k, current.get(k)), shown(k, v))) for k, v in changes.items()]
-    warnings: list[str] = []
+    lines = [("Equipment", "{} · {}".format(asset.name, asset.asset_tag))]
+    if moved:
+        lines.append(("Department", "{} → {}".format(
+            current_department.name if current_department else "Not in a department",
+            new_department.name if new_department else "Not in a department")))
+    else:
+        lines.append(("Department", current_department.name if current_department else "Not in a department"))
+    lines += [(labels[k], "{} → {}".format(shown(k, current.get(k)), shown(k, v)))
+              for k, v in changes.items() if k != "department_id"]
+    if moved and new_department is not None:
+        from app.services import inspection_programme as programme
+
+        if not programme.forms_for(ctx.db, department_id=new_department.id):
+            warnings_moved = ["{} has no inspection form yet.".format(new_department.name)]
+        else:
+            warnings_moved = []
+    else:
+        warnings_moved = []
+    warnings: list[str] = list(warnings_moved)
     if "unit_cost" in changes or "quantity" in changes:
         if unit is not None:
             lines.append(("Purchase cost in all", _dollars(site_categories.total_cost(Decimal(unit), quantity))))
@@ -880,8 +916,443 @@ def _execute_job_update(db: Session, user: User, payload: dict[str, Any]) -> dic
 
     job = update_job(payload["job_id"], EquipmentJobUpdate(**payload["changes"]), db=db, current_user=user)
     return {"message": "{} {} updated.".format(job["kind"].capitalize(), job["number"]), "record": job["number"],
-            "route": "/equipment-maintenance/{}".format(job["kind"]), "work_order_id": job["id"],
+            "route": "/service", "work_order_id": job["id"],
             "facility_id": db.get(ServiceRequest, payload["job_id"]).facility_id}
+
+
+# ── inspections, departments, the fleet and sites ────────────────────────────
+# Named the way people say them - "Radiology", "Ali", "Generator 1", "the
+# ambulance" - and resolved here, so a conversation never has to carry the
+# database's own numbers to get something done.
+
+_NO_DEPARTMENT = ("none", "no department", "not in a department", "no")
+
+
+def _day(value: date) -> str:
+    return "{} {}".format(value.day, value.strftime("%b %Y"))
+
+
+def _person_named(ctx: ToolContext, facility_id: int, name: Any) -> Optional[User]:
+    """Somebody who can be given an inspection at this site, by the name used."""
+    from app.services import inspection_programme as programme
+
+    if name in (None, ""):
+        return None
+    people = programme.assignable_inspectors(ctx.db, facility_id)
+    wanted = str(name).strip().lower()
+    if wanted in ("me", "myself", "i", "mine"):
+        if any(person.id == ctx.user.id for person in people):
+            return ctx.user
+        raise ToolInputError("The person asking cannot be given inspections at this site.")
+    exact = [p for p in people if (p.full_name or "").strip().lower() == wanted or (p.username or "").lower() == wanted]
+    if len(exact) == 1:
+        return exact[0]
+    partial = exact or [p for p in people if wanted in (p.full_name or "").lower()]
+    if len(partial) == 1:
+        return partial[0]
+    if len(partial) > 1:
+        raise ToolInputError("More than one person matches '{}': {}. Ask which.".format(
+            name, ", ".join(sorted(p.full_name for p in partial))))
+    raise ToolInputError("Nobody called '{}' can be given inspections at this site. Those who can: {}.".format(
+        name, ", ".join(sorted(p.full_name for p in people)) or "nobody yet"))
+
+
+def _item_label(row: Any, kind: str) -> str:
+    tag = row.asset_tag if kind == "equipment" else row.registration
+    return "{} · {}".format(row.name, tag) if tag else row.name
+
+
+def _item_named(ctx: ToolContext, facility_id: Optional[int], *, equipment: Any = None, vehicle: Any = None,
+                asset_id: Any = None) -> tuple[Any, str]:
+    """The equipment or vehicle meant, by its name, asset tag or registration."""
+    from app.models.vehicle import Vehicle
+
+    if asset_id:
+        return _category_item(ctx, asset_id), "equipment"
+    text = equipment or vehicle
+    if not text or not str(text).strip():
+        raise ToolInputError("Say which equipment or vehicle, by its name or tag.")
+    wanted = str(text).strip().lower()
+    candidates: list[tuple[Any, str]] = []
+    if equipment or not vehicle:
+        candidates += [(row, "equipment") for row in ctx.db.query(Equipment).filter(
+            Equipment.facility_id == facility_id, Equipment.name.isnot(None)).all()]
+    if vehicle or not equipment:
+        candidates += [(row, "vehicle") for row in ctx.db.query(Vehicle).filter(Vehicle.facility_id == facility_id).all()]
+
+    def keys(row: Any, kind: str) -> list[str]:
+        tag = row.asset_tag if kind == "equipment" else row.registration
+        return [key for key in ((row.name or "").lower(), (tag or "").lower()) if key]
+
+    exact = [c for c in candidates if wanted in keys(*c)]
+    if len(exact) == 1:
+        return exact[0]
+    partial = exact or [c for c in candidates if any(wanted in key for key in keys(*c))]
+    if len(partial) == 1:
+        return partial[0]
+    if len(partial) > 1:
+        raise ToolInputError("More than one matches '{}': {}. Ask which.".format(
+            text, "; ".join(sorted(_item_label(row, kind) for row, kind in partial[:8]))))
+    raise ToolInputError("Nothing called '{}' at this site. Look it up with category_equipment or "
+                         "inspection_status first.".format(text))
+
+
+def _form_named(ctx: ToolContext, name: Any):
+    from app.models.inspection_form import InspectionForm
+
+    forms = ctx.db.query(InspectionForm).filter(InspectionForm.archived_at.is_(None)).order_by(InspectionForm.name).all()
+    wanted = str(name).strip().lower()
+    exact = [form for form in forms if form.name.strip().lower() == wanted]
+    partial = exact or [form for form in forms if wanted in form.name.lower()]
+    if len(partial) == 1:
+        return partial[0]
+    listed = ", ".join(form.name for form in forms[:20]) or "none are built yet"
+    if len(partial) > 1:
+        raise ToolInputError("More than one form matches '{}': {}. Ask which.".format(
+            name, ", ".join(form.name for form in partial[:10])))
+    raise ToolInputError("No inspection form called '{}'. The forms are: {}.".format(name, listed))
+
+
+def _open_inspection_number(ctx: ToolContext, item: Any, kind: str) -> Optional[str]:
+    from app.models.inspection import Inspection, InspectionBatch, InspectionStatus
+
+    column = Inspection.equipment_id if kind == "equipment" else Inspection.vehicle_id
+    row = (ctx.db.query(InspectionBatch.batch_number)
+           .join(Inspection, Inspection.batch_id == InspectionBatch.id)
+           .filter(column == item.id,
+                   Inspection.status.in_([InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS]))
+           .first())
+    return row[0] if row else None
+
+
+# ── schedule an inspection visit ─────────────────────────────────────────────
+
+def _prepare_inspection_visit(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.services import inspection_programme as programme
+
+    site = _site(ctx, args.get("facility_id"))
+    department = _department_named(ctx, site.id, args.get("department"))
+    scope = args.get("covers") or ("department" if department else None)
+    if scope is None:
+        raise ToolInputError("Say what the visit covers: a department (by name), the whole site, or the fleet.")
+    if scope not in programme.SCOPES:
+        raise ToolInputError("covers is department, facility (the whole site) or fleet.")
+    if scope == "department" and department is None:
+        raise ToolInputError("Say which department the visit is for.")
+    if scope != "department":
+        department = None
+    if not args.get("on"):
+        raise ToolInputError("Say the date of the visit.")
+    on = _date_arg(args["on"], "on")
+    if on < utc_today():
+        raise ToolInputError("A visit is scheduled for today or a later day, not {}.".format(_day(on)))
+    inspector = _person_named(ctx, site.id, args.get("inspector"))
+
+    if scope == "fleet":
+        links, where = programme.forms_for(ctx.db, facility_id=site.id), "The fleet"
+    elif scope == "department":
+        links, where = programme.forms_for(ctx.db, department_id=department.id), department.name
+    else:
+        links, where = None, site.name
+    if links is not None and not links:
+        raise ToolInputError("{} has no inspection form attached yet, so a visit cannot be scheduled. A form "
+                             "is attached on {}.".format(where, "the Fleet page" if scope == "fleet"
+                                                         else "the department's page"))
+    items = programme.due_items(ctx.db, site.id, scope=scope,
+                                department_id=department.id if department else None, by=on)
+    if not items:
+        raise ToolInputError("Nothing {} is due by {}, so the visit would be empty. Offer a later date, or "
+                             "inspecting one item now.".format(
+                                 "in " + where if scope == "department" else "at " + where, _day(on)))
+
+    covers = department.name if department else ("Whole site" if scope == "facility" else "Fleet")
+    names = [row.name for row in items]
+    shown = ", ".join(names[:6]) + (" and {} more".format(len(names) - 6) if len(names) > 6 else "")
+    overdue = sum(1 for row in items if row.next_generated_pm_date and row.next_generated_pm_date < utc_today())
+    warnings = []
+    if overdue:
+        warnings.append("{} of them {} already overdue.".format(overdue, "is" if overdue == 1 else "are"))
+    if inspector is None:
+        warnings.append("No inspector is set, so anyone who inspects at this site can take it.")
+    return Prepared(
+        payload={"facility_id": site.id, "scope": scope, "department_id": department.id if department else None,
+                 "scheduled_on": on.isoformat(), "inspector_id": inspector.id if inspector else None},
+        title="Schedule an inspection · {}".format(covers),
+        lines=[("Site", site.name), ("Covers", covers), ("Date", _day(on)),
+               ("Items due by then", "{} - {}".format(len(names), shown)),
+               ("Inspected on", ", ".join(form.name for _, form in links) if links else "Each department's own forms"),
+               ("Inspector", inspector.full_name if inspector else "Not set")],
+        facility_id=site.id, warnings=warnings,
+    )
+
+
+def _execute_inspection_visit(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.inspection_programme import create_visit
+    from app.schemas.inspection_programme import VisitIn
+
+    visit = create_visit(VisitIn(
+        facility_id=payload["facility_id"], scope=payload["scope"], department_id=payload.get("department_id"),
+        scheduled_on=date.fromisoformat(payload["scheduled_on"]), inspector_id=payload.get("inspector_id"),
+    ), db=db, current_user=user)
+    return {"message": "Inspection {} is scheduled for {} with {} item{}.".format(
+                visit["number"], _day(date.fromisoformat(payload["scheduled_on"])), visit["items"],
+                "" if visit["items"] == 1 else "s"),
+            "record": visit["number"], "route": "/inspection-visits/{}".format(visit["id"]),
+            "facility_id": payload["facility_id"]}
+
+
+# ── inspect one item now ─────────────────────────────────────────────────────
+
+def _prepare_inspect_now(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.models.department import Department
+    from app.models.facility import Facility
+    from app.services import inspection_programme as programme
+
+    if args.get("asset_id"):
+        item, kind = _item_named(ctx, None, asset_id=args["asset_id"])
+        site = ctx.db.get(Facility, item.facility_id)
+    else:
+        site = _site(ctx, args.get("facility_id"))
+        item, kind = _item_named(ctx, site.id, equipment=args.get("equipment"), vehicle=args.get("vehicle"))
+    department = ctx.db.get(Department, item.department_id) if kind == "equipment" and item.department_id else None
+    if kind == "vehicle":
+        links = programme.forms_for(ctx.db, facility_id=site.id)
+    else:
+        links = programme.forms_for(ctx.db, department_id=department.id) if department else []
+
+    form = _form_named(ctx, args["form"]) if args.get("form") else None
+    if form is None and not links:
+        from app.models.inspection_form import InspectionForm
+
+        library = [f.name for f in ctx.db.query(InspectionForm).filter(InspectionForm.archived_at.is_(None))
+                   .order_by(InspectionForm.name).limit(20)]
+        reason = ("is not in a department" if kind == "equipment" and department is None
+                  else "has no inspection form of its own")
+        raise ToolInputError("{} {}, so ask which form to inspect it on: {}.".format(
+            item.name, reason, ", ".join(library) or "none are built yet - one is built under Inspection forms"))
+    on = _date_arg(args["on"], "on") if args.get("on") else utc_today()
+    inspector = _person_named(ctx, site.id, args.get("inspector"))
+    warnings = ["It opens as a visit of one, ready to fill in, whether or not it was due."]
+    already = _open_inspection_number(ctx, item, kind)
+    if already:
+        warnings.insert(0, "It already has an open inspection in visit {}.".format(already))
+    return Prepared(
+        payload={"facility_id": site.id, "equipment_id": item.id if kind == "equipment" else None,
+                 "vehicle_id": item.id if kind == "vehicle" else None, "form_id": form.id if form else None,
+                 "scheduled_on": on.isoformat(), "inspector_id": inspector.id if inspector else None},
+        title="Inspect {} now".format(item.name),
+        lines=[("Item", _item_label(item, kind)),
+               ("Department", department.name if department else ("Fleet" if kind == "vehicle" else "Not in a department")),
+               ("Inspected on", form.name if form else ", ".join(f.name for _, f in links)),
+               ("Date", _day(on)),
+               ("Inspector", inspector.full_name if inspector else "Not set")],
+        facility_id=site.id, warnings=warnings,
+    )
+
+
+def _execute_inspect_now(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.inspection_programme import inspect_now
+    from app.schemas.inspection_programme import InspectNowIn
+
+    visit = inspect_now(InspectNowIn(
+        facility_id=payload["facility_id"], equipment_id=payload.get("equipment_id"),
+        vehicle_id=payload.get("vehicle_id"), form_id=payload.get("form_id"),
+        scheduled_on=date.fromisoformat(payload["scheduled_on"]), inspector_id=payload.get("inspector_id"),
+    ), db=db, current_user=user)
+    return {"message": "Inspection {} is open and ready to fill in.".format(visit["number"]),
+            "record": visit["number"], "route": "/inspection-visits/{}".format(visit["id"]),
+            "facility_id": payload["facility_id"]}
+
+
+# ── clear a red tag ──────────────────────────────────────────────────────────
+
+_CAN_CLEAR_RED_TAGS = (UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.FACILITY_ADMIN,
+                       UserRole.FACILITY_MANAGER, UserRole.TECHNICIAN)
+
+
+def _prepare_clear_red_tag(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.models.facility import Facility
+    from app.models.red_tag import RedTag
+
+    if ctx.user.role not in _CAN_CLEAR_RED_TAGS:
+        raise ToolInputError("Only an inspector, an admin or a Super Admin can clear a red tag.")
+    note = (args.get("note") or "").strip()
+    if len(note) < 3:
+        raise ToolInputError("Say what was done to put it right: that note is kept with the red tag.")
+    if args.get("asset_id"):
+        item, kind = _item_named(ctx, None, asset_id=args["asset_id"])
+        site = ctx.db.get(Facility, item.facility_id)
+    else:
+        site = _site(ctx, args.get("facility_id"))
+        item, kind = _item_named(ctx, site.id, equipment=args.get("equipment"), vehicle=args.get("vehicle"))
+    column = RedTag.equipment_id if kind == "equipment" else RedTag.vehicle_id
+    tag = (ctx.db.query(RedTag).filter(RedTag.facility_id == site.id, column == item.id, RedTag.cleared_at.is_(None))
+           .order_by(RedTag.raised_at.desc()).first())
+    if tag is None:
+        raise ToolInputError("{} has no red tag to clear.".format(item.name))
+    warnings = []
+    if (item.condition or "") == "out_of_service":
+        warnings.append("It goes back to Needs attention, not Working: it still has a failure until it passes "
+                        "an inspection.")
+    return Prepared(
+        payload={"red_tag_id": tag.id, "note": note[:2000]},
+        title="Clear the red tag on {}".format(item.name),
+        lines=[("Item", _item_label(item, kind)), ("Red tagged on", _day(tag.raised_at.date())),
+               ("Reason", tag.note), ("What was done", note[:2000])],
+        facility_id=site.id, warnings=warnings,
+    )
+
+
+def _execute_clear_red_tag(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.inspection_programme import clear_red_tag
+    from app.models.red_tag import RedTag
+    from app.schemas.inspection_programme import ClearRedTagIn
+
+    tag = db.get(RedTag, payload["red_tag_id"])
+    facility_id = tag.facility_id if tag else None
+    clear_red_tag(payload["red_tag_id"], ClearRedTagIn(note=payload["note"]), db=db, current_user=user)
+    return {"message": "The red tag is cleared and the note is kept with it.", "record": "Red tag",
+            "route": "/red-tags", "facility_id": facility_id}
+
+
+# ── add a department ─────────────────────────────────────────────────────────
+
+def _prepare_add_department(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.models.department import Department
+
+    if ctx.user.role not in (UserRole.SUPERADMIN, UserRole.ADMIN):
+        raise ToolInputError("Only an admin or a Super Admin can add a department.")
+    site = _site(ctx, args.get("facility_id"))
+    name = re.sub(r"\s+", " ", str(args.get("name") or "")).strip()[:120]
+    if not name:
+        raise ToolInputError("Say what the department is called.")
+    existing = ctx.db.query(Department).filter(
+        Department.facility_id == site.id, func.lower(Department.name) == name.lower()).first()
+    if existing is not None:
+        raise ToolInputError("{} already has a department called {}.".format(site.name, existing.name))
+    description = str(args.get("description") or "").strip()[:1000] or None
+    return Prepared(
+        payload={"facility_id": site.id, "name": name, "description": description},
+        title="Add the {} department".format(name),
+        lines=[("Site", site.name), ("Department", name), ("Description", description or "None")],
+        facility_id=site.id,
+        warnings=["Attach an inspection form to it on its page before scheduling its visits."],
+    )
+
+
+def _execute_add_department(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.departments import create_department
+    from app.schemas.department import DepartmentCreate
+
+    department = create_department(DepartmentCreate(
+        name=payload["name"], description=payload.get("description"), facility_id=payload["facility_id"],
+    ), db=db, current_user=user)
+    return {"message": "{} is added.".format(_get(department, "name")), "record": _get(department, "name"),
+            "route": "/departments/{}".format(_get(department, "id")), "facility_id": payload["facility_id"]}
+
+
+# ── add a vehicle ────────────────────────────────────────────────────────────
+
+def _prepare_add_vehicle(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.models.vehicle import Vehicle
+    from app.schemas.inspection_programme import VehicleIn
+    from app.services import inspection_programme as programme
+
+    site = _site(ctx, args.get("facility_id"))
+    tidy = lambda key, size: (re.sub(r"\s+", " ", str(args.get(key) or "")).strip()[:size] or None)  # noqa: E731
+    name = tidy("name", 160)
+    if not name:
+        raise ToolInputError("Say what the vehicle is called, for example 'Ambulance 2'.")
+    registration = (tidy("registration", 40) or "").upper() or None
+    frequency, interval = (None, None)
+    if args.get("frequency"):
+        frequency, interval = programme.frequency_or_422(args.get("frequency"), args.get("interval_days"))
+    first_due = _date_arg(args["first_due_on"], "first_due_on") if args.get("first_due_on") else None
+    fields = {"facility_id": site.id, "name": name, "registration": registration,
+              "vehicle_type": tidy("vehicle_type", 60), "make": tidy("make", 120), "model": tidy("model", 120),
+              "year": args.get("year"), "frequency": frequency, "interval_days": interval,
+              "first_due_on": first_due.isoformat() if first_due else None}
+    _checked(VehicleIn, fields)
+    if registration and ctx.db.query(Vehicle).filter(
+            Vehicle.facility_id == site.id, func.upper(Vehicle.registration) == registration).first():
+        raise ToolInputError("{} already has a vehicle registered {}.".format(site.name, registration))
+    warnings = []
+    if not programme.forms_for(ctx.db, facility_id=site.id):
+        warnings.append("The fleet has no inspection form yet; one is attached on the Fleet page.")
+    if frequency is None:
+        warnings.append("No inspection frequency is set, so it will show as having no schedule.")
+    make_model = " ".join(p for p in (fields["make"], fields["model"]) if p)
+    return Prepared(
+        payload=fields,
+        title="Add {} to the fleet".format(name),
+        lines=[("Site", site.name), ("Vehicle", name), ("Registration", registration or "Not given"),
+               ("Type", fields["vehicle_type"] or "Not given"), ("Make and model", make_model or "Not given"),
+               ("Year", str(fields["year"]) if fields["year"] else "Not given"),
+               ("Inspected", programme.FREQUENCIES[frequency] + (" ({} days)".format(interval) if interval else "")
+                if frequency else "No schedule")],
+        facility_id=site.id, warnings=warnings,
+    )
+
+
+def _execute_add_vehicle(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.fleet import add_vehicle
+    from app.schemas.inspection_programme import VehicleIn
+
+    vehicle = add_vehicle(VehicleIn(**payload), db=db, current_user=user)
+    return {"message": "{} is added to the fleet.".format(payload["name"]), "record": payload["name"],
+            "route": "/fleet", "vehicle_id": _get(vehicle, "id"), "facility_id": payload["facility_id"]}
+
+
+# ── register a site ──────────────────────────────────────────────────────────
+
+_SITE_FIELDS = (("name", "name"), ("address", "street address"), ("city", "city"), ("state", "state"),
+                ("zip_code", "ZIP code"), ("country", "country"), ("phone", "phone number"),
+                ("email", "email address"))
+
+
+def _prepare_register_site(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.schemas.facility import FacilityCreate
+
+    fields = {key: re.sub(r"\s+", " ", str(args.get(key) or "")).strip() for key, _ in _SITE_FIELDS}
+    missing = [label for key, label in _SITE_FIELDS if not fields[key]]
+    if missing:
+        raise ToolInputError("A new site needs its {}. Ask for {} in one short question.".format(
+            ", ".join(missing), "it" if len(missing) == 1 else "them"))
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", fields["email"]):
+        raise ToolInputError("'{}' does not look like an email address. Ask for it again.".format(fields["email"]))
+    from app.api.v1.endpoints.facilities import _facility_name_exists
+
+    # The same comparison the Register a site form makes: case and spacing aside.
+    if _facility_name_exists(ctx.db, fields["name"]):
+        raise ToolInputError("A site called {} already exists.".format(fields["name"]))
+    extra: dict[str, Any] = {}
+    if args.get("beds") not in (None, ""):
+        extra["beds"] = args["beds"]
+    if args.get("size") not in (None, ""):
+        extra["size_band"] = str(args["size"]).strip().lower()
+    _checked(FacilityCreate, {**fields, **extra})
+    return Prepared(
+        payload={**fields, **extra},
+        title="Register {}".format(fields["name"]),
+        lines=[("Name", fields["name"]),
+               ("Address", "{}, {}, {} {}, {}".format(fields["address"], fields["city"], fields["state"],
+                                                      fields["zip_code"], fields["country"])),
+               ("Phone", fields["phone"]), ("Email", fields["email"]),
+               ("Beds", str(extra["beds"]) if "beds" in extra else "Not given"),
+               ("Size", extra["size_band"].capitalize() if "size_band" in extra else "Not given")],
+        facility_id=None,
+        warnings=["It appears on the Sites page. Its departments, equipment and people are added from there."],
+    )
+
+
+def _execute_register_site(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.facilities import create_facility
+    from app.schemas.facility import FacilityCreate
+
+    site = create_facility(db=db, facility_in=FacilityCreate(**payload), auto_unique_name=False, current_user=user)
+    site_id = _get(site, "id")
+    return {"message": "{} is registered.".format(_get(site, "name")), "record": _get(site, "name"),
+            "route": "/sites/{}".format(site_id), "facility_id": site_id}
 
 
 # ── registry ─────────────────────────────────────────────────────────────────
@@ -968,25 +1439,26 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
         name="prepare_equipment_job",
         module="service-requests", permission="add",
         description=(
-            "Prepare a service or inspection job on a piece of category equipment "
-            "(Electrical, Plumbing, Mechanical, HVAC), for Equipment Maintenance. Find the "
-            "equipment with category_equipment or resolve_entity kind=asset. Optionally a due "
-            "date and a person to assign (search_users). Nothing happens until confirmed."
+            "Prepare a service job - work raised because a piece of equipment is at fault or "
+            "malfunctioning - for the Service screen. Find the equipment with category_equipment or "
+            "resolve_entity kind=asset. Optionally a due date and a person to assign (search_users). "
+            "This is NOT for inspections: use prepare_inspect_now or prepare_inspection_visit. "
+            "Nothing happens until confirmed."
         ),
         parameters={"type": "object", "properties": {
             "asset_id": {"type": "integer"},
-            "kind": {"type": "string", "enum": ["service", "inspection"]},
+            "kind": {"type": "string", "enum": ["service"]},
             "what_needs_doing": {"type": "string"},
             "due_on": {"type": "string", "format": "date"},
             "assigned_to_id": {"type": "integer"},
-        }, "required": ["asset_id", "kind", "what_needs_doing"]},
+        }, "required": ["asset_id", "what_needs_doing"]},
         prepare=_prepare_equipment_job, execute=_execute_equipment_job,
     ),
     ActionDefinition(
         name="prepare_equipment_job_update",
         module="service-requests", permission="edit",
         description=(
-            "Prepare a change to a service or inspection job under Equipment Maintenance: its status "
+            "Prepare a change to a service job (or an old-style inspection job): its status "
             "(open, in_progress, done), due date, who it is assigned to (search_users), what needs doing, "
             "notes, labour and parts cost, and for an inspection the pass/fail result and findings. Find the "
             "job with equipment_jobs (job_id). Pass only what changes. Nothing happens until confirmed."
@@ -1009,7 +1481,8 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
         name="prepare_add_equipment",
         module="facility-inventory", permission="add",
         description=(
-            "Prepare adding equipment to a site's Electrical, Plumbing, Mechanical or HVAC category. Needs the "
+            "Prepare adding equipment to one of a site's categories under Facility (Electrical, Plumbing, "
+            "Mechanical, HVAC, Building, Landscaping, Parking). Needs the "
             "category, a name (e.g. 'Generator 2') and its type (e.g. Generator, Chiller); ask for any of these "
             "that the person did not give. The department it belongs to (by name, e.g. 'Radiology'), quantity, "
             "status, make, model, the purchase cost of one item, the in-service date, useful life and notes are "
@@ -1017,10 +1490,13 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
         ),
         parameters={"type": "object", "properties": {
             "facility_id": {"type": "integer", "description": "The site. Defaults to the one the person is in."},
-            "category": {"type": "string", "enum": ["electrical", "plumbing", "mechanical", "hvac"]},
+            "category": {"type": "string", "enum": ["electrical", "plumbing", "mechanical", "hvac", "building", "landscaping", "parking"]},
             "name": {"type": "string"},
             "type": {"type": "string"},
             "department": {"type": "string", "description": "The department it belongs to, by name."},
+            "building": {"type": "string", "description": "Only if the person says where it is."},
+            "floor": {"type": "string"},
+            "spot": {"type": "string", "description": "Room or exact spot, only if given."},
             "quantity": {"type": "integer", "minimum": 1},
             "status": {"type": "string", "enum": ["working", "needs_attention", "out_of_service"]},
             "make": {"type": "string"},
@@ -1036,17 +1512,18 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
         name="prepare_equipment_update",
         module="facility-inventory", permission="edit",
         description=(
-            "Prepare a change to equipment under Facility: its status (working, needs_attention, "
-            "out_of_service), name, type, category, building, floor, room or exact spot, quantity, make, model, "
+            "Prepare a change to equipment under Facility: the department it belongs to (by name, or 'none'), "
+            "its status (working, needs_attention, out_of_service), name, type, category, quantity, make, model, "
             "purchase cost of one item, in-service date, useful life or notes. Find it with category_equipment "
             "or resolve_entity kind=asset. Pass only what changes. Nothing happens until confirmed."
         ),
         parameters={"type": "object", "properties": {
             "asset_id": {"type": "integer"},
+            "department": {"type": "string", "description": "Its department by name, or 'none' for no department."},
             "status": {"type": "string", "enum": ["working", "needs_attention", "out_of_service"]},
             "name": {"type": "string"},
             "type": {"type": "string"},
-            "category": {"type": "string", "enum": ["electrical", "plumbing", "mechanical", "hvac"]},
+            "category": {"type": "string", "enum": ["electrical", "plumbing", "mechanical", "hvac", "building", "landscaping", "parking"]},
             "building": {"type": "string"},
             "floor": {"type": "string"},
             "spot": {"type": "string"},
@@ -1059,6 +1536,118 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
             "notes": {"type": "string"},
         }, "required": ["asset_id"]},
         prepare=_prepare_equipment_update, execute=_execute_equipment_update,
+    ),
+    ActionDefinition(
+        name="prepare_inspection_visit",
+        module="inspections", permission="add",
+        description=(
+            "Prepare scheduling an inspection visit on a date: for a department (by name), the whole site "
+            "(covers=facility) or the fleet (covers=fleet). It holds everything due by that date. Optionally "
+            "an inspector by name ('me' for the person asking). Nothing happens until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer", "description": "The site. Defaults to the one the person is in."},
+            "covers": {"type": "string", "enum": ["department", "facility", "fleet"]},
+            "department": {"type": "string", "description": "The department by name, when covers=department."},
+            "on": {"type": "string", "format": "date", "description": "The day of the visit, YYYY-MM-DD."},
+            "inspector": {"type": "string", "description": "Who inspects, by name."},
+        }, "required": ["on"]},
+        prepare=_prepare_inspection_visit, execute=_execute_inspection_visit,
+    ),
+    ActionDefinition(
+        name="prepare_inspect_now",
+        module="inspections", permission="add",
+        description=(
+            "Prepare inspecting one piece of equipment or one vehicle now, whether or not it is due. Name it "
+            "(equipment: its name or asset tag; vehicle: its name or registration). It uses its department's "
+            "form, or the form named (form) when it has none. Optionally a date and an inspector by name. It "
+            "opens as a visit of one, ready to fill in. Nothing happens until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer", "description": "The site. Defaults to the one the person is in."},
+            "equipment": {"type": "string", "description": "Equipment by name or asset tag."},
+            "vehicle": {"type": "string", "description": "A vehicle by name or registration."},
+            "asset_id": {"type": "integer"},
+            "form": {"type": "string", "description": "An inspection form by name."},
+            "on": {"type": "string", "format": "date"},
+            "inspector": {"type": "string", "description": "Who inspects, by name."},
+        }},
+        prepare=_prepare_inspect_now, execute=_execute_inspect_now,
+    ),
+    ActionDefinition(
+        name="prepare_clear_red_tag",
+        module="inspections", permission="edit",
+        description=(
+            "Prepare clearing the red tag on a piece of equipment or a vehicle, with a note saying what was "
+            "done to put it right (required). Name the item (equipment: name or asset tag; vehicle: name or "
+            "registration). Nothing happens until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer", "description": "The site. Defaults to the one the person is in."},
+            "equipment": {"type": "string"},
+            "vehicle": {"type": "string"},
+            "asset_id": {"type": "integer"},
+            "note": {"type": "string", "description": "What was done, in the person's words."},
+        }, "required": ["note"]},
+        prepare=_prepare_clear_red_tag, execute=_execute_clear_red_tag,
+    ),
+    ActionDefinition(
+        name="prepare_add_department",
+        module="facilities", permission="edit",
+        description=(
+            "Prepare adding a department to a site, by name, with an optional description. Nothing happens "
+            "until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer", "description": "The site. Defaults to the one the person is in."},
+            "name": {"type": "string"},
+            "description": {"type": "string"},
+        }, "required": ["name"]},
+        prepare=_prepare_add_department, execute=_execute_add_department,
+    ),
+    ActionDefinition(
+        name="prepare_add_vehicle",
+        module="inspections", permission="add",
+        description=(
+            "Prepare adding a vehicle to a site's fleet: its name (required), registration, type, make, model, "
+            "year, and how often it is inspected (monthly, quarterly, semi_annual, annual, or custom with "
+            "interval_days) with an optional first due date. Nothing happens until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "facility_id": {"type": "integer", "description": "The site. Defaults to the one the person is in."},
+            "name": {"type": "string"},
+            "registration": {"type": "string"},
+            "vehicle_type": {"type": "string", "description": "e.g. Ambulance, Van, Car."},
+            "make": {"type": "string"},
+            "model": {"type": "string"},
+            "year": {"type": "integer", "minimum": 1900, "maximum": 2100},
+            "frequency": {"type": "string", "enum": ["monthly", "quarterly", "semi_annual", "annual", "custom"]},
+            "interval_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+            "first_due_on": {"type": "string", "format": "date"},
+        }, "required": ["name"]},
+        prepare=_prepare_add_vehicle, execute=_execute_add_vehicle,
+    ),
+    ActionDefinition(
+        name="prepare_register_site",
+        module="facilities", permission="add",
+        description=(
+            "Prepare registering a new site (hospital). Needs its name, street address, city, state, ZIP code, "
+            "country, phone number and email address - ask for whichever the person did not give, in one short "
+            "question. Beds and size (small, medium, large) are optional. Nothing happens until confirmed."
+        ),
+        parameters={"type": "object", "properties": {
+            "name": {"type": "string"},
+            "address": {"type": "string"},
+            "city": {"type": "string"},
+            "state": {"type": "string"},
+            "zip_code": {"type": "string"},
+            "country": {"type": "string"},
+            "phone": {"type": "string"},
+            "email": {"type": "string"},
+            "beds": {"type": "integer", "minimum": 0},
+            "size": {"type": "string", "enum": ["small", "medium", "large"]},
+        }, "required": ["name"]},
+        prepare=_prepare_register_site, execute=_execute_register_site,
     ),
 )
 
@@ -1193,14 +1782,30 @@ def confirm(db: Session, user: User, action_id: str) -> AssistantAction:
         db.rollback()
         action = db.get(AssistantAction, action_id)
         action.status = ActionStatus.FAILED.value
-        action.error = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-    except Exception as exc:  # noqa: BLE001 - reported on the card, never swallowed silently
+        action.error = plain_error(exc.detail if isinstance(exc.detail, str) else None)
+    except Exception:  # noqa: BLE001 - logged in full, told plainly on the card
+        logger.exception("Confirmed action %s (%s) failed", action_id, action.action_type)
         db.rollback()
         action = db.get(AssistantAction, action_id)
         action.status = ActionStatus.FAILED.value
-        action.error = "It could not be completed: {}".format(exc)
+        action.error = plain_error(None)
     db.commit()
     return action
+
+
+_ID_WORDING = re.compile(r"\s*\b(with (that|this|the given) id|id\s*#?\d+|#\d+)\b", re.IGNORECASE)
+_CODE_WORDING = re.compile(r"\b[a-z]+(?:_[a-z]+)+\b")
+
+
+def plain_error(detail: Optional[str]) -> str:
+    """What went wrong, in the words of the screen - never field names or ids."""
+    fallback = "It could not be completed and nothing was changed. Try again, or make the change on its own screen."
+    if not detail or not detail.strip():
+        return fallback
+    text = _ID_WORDING.sub("", detail.strip())
+    if _CODE_WORDING.search(text) or "Traceback" in text or "{" in text:
+        return fallback
+    return text[:300]
 
 
 def cancel(db: Session, user: User, action_id: str) -> AssistantAction:

@@ -223,11 +223,16 @@ export const askAssistant = (
       })
 
       if (!response.ok || !response.body) {
-        const detail = await response.text().catch(() => '')
+        // What the server said stays in the network log. The person is told,
+        // in the screens' words, what they can do about it.
         handlers.onError(
           response.status === 403
             ? 'The assistant is available to Super Admin accounts only.'
-            : detail.slice(0, 200) || `Request failed (${response.status})`,
+            : response.status === 401
+              ? 'Your session has ended. Sign in again to keep using the assistant.'
+              : response.status === 429
+                ? 'The assistant is busy. Please try again in a moment.'
+                : 'The assistant is not responding right now. Please try again in a moment.',
         )
         return
       }

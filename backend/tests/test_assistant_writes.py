@@ -55,9 +55,10 @@ def test_equipment_is_added_only_when_confirmed():
     assert added.asset_tag and done.result["route"] == "/categories/hvac" and done.result["facility_id"] == site.id
     assert done.result["message"] == "Chiller 2 added to HVAC as {}.".format(added.asset_tag), done.result
 
-    detail = refused(lambda: actions.propose(db, people["boss"], "prepare_add_equipment", {
-        "facility_id": site.id, "category": "electrical", "name": "Generator 2", "type": "Generator"}), 422)
-    assert "building" in detail, detail
+    # Equipment is placed by its department now: a building is never required.
+    placed = lines_of(actions.propose(db, people["boss"], "prepare_add_equipment", {
+        "facility_id": site.id, "category": "electrical", "name": "Generator 2", "type": "Generator"}))
+    assert placed["Department"] == "Not in a department" and "Where" not in placed, placed
     twin = actions.propose(db, people["boss"], "prepare_add_equipment", {
         "facility_id": site.id, "category": "electrical", "name": "generator 1", "type": "Generator",
         "building": "Annex", "unit_cost": 1000})
@@ -65,7 +66,7 @@ def test_equipment_is_added_only_when_confirmed():
     refused(lambda: actions.propose(db, people["boss"], "prepare_add_equipment", {
         "category": "hvac", "name": "Chiller 3", "type": "Chiller", "building": "Main block"}), 422)
     db.close()
-    print("ok  new equipment is prepared with its place and cost, and added once on Confirm")
+    print("ok  new equipment is prepared with its department, place if given, and cost, and added once on Confirm")
 
 
 def test_equipment_changes_show_what_changes_and_are_made_on_confirm():
@@ -124,7 +125,7 @@ def test_a_service_is_closed_with_its_costs():
     assert equipment_jobs.simple_status(closed.status) == "done" and closed.assigned_technician_id == people["sam"].id
     assert Decimal(str(closed.labour_cost)) == Decimal("1200.00") and Decimal(str(closed.total_cost)) == Decimal("1500.50")
     assert closed.notes == "Ran at full load for two hours"
-    assert done.result["route"] == "/equipment-maintenance/service" and done.result["facility_id"] == site.id
+    assert done.result["route"] == "/service" and done.result["facility_id"] == site.id
 
     detail = refused(lambda: actions.propose(db, people["boss"], "prepare_equipment_job_update", {
         "job_id": job.id, "inspection_result": "pass"}), 422)
@@ -137,22 +138,28 @@ def test_a_service_is_closed_with_its_costs():
 
 
 def test_an_inspection_result_is_recorded():
+    """Inspections are no longer raised as jobs, but one raised before still closes with its result."""
+    from app.api.v1.endpoints import equipment_maintenance as jobs_api
+    from app.schemas.site_categories import EquipmentJobCreate
+
     db, site, _, people, equipment = build()
-    raised = actions.confirm(db, people["boss"], actions.propose(db, people["boss"], "prepare_equipment_job", {
-        "asset_id": equipment["ahu"]["id"], "kind": "inspection", "what_needs_doing": "Quarterly inspection",
-        "assigned_to_id": str(people["sam"].id)}).id)
-    assert raised.status == "executed", raised.error
+    detail = refused(lambda: actions.propose(db, people["boss"], "prepare_equipment_job", {
+        "asset_id": equipment["ahu"]["id"], "kind": "inspection", "what_needs_doing": "Quarterly inspection"}), 422)
+    assert "prepare_inspect_now" in detail
+    old_job = jobs_api.create_job(EquipmentJobCreate(
+        facility_id=site.id, kind="inspection", equipment_id=equipment["ahu"]["id"],
+        title="Quarterly inspection", assigned_to_id=people["sam"].id), db=db, current_user=people["boss"])
     action = actions.propose(db, people["boss"], "prepare_equipment_job_update", {
-        "job_id": raised.result["work_order_id"], "status": "done", "inspection_result": "Fail",
+        "job_id": old_job["id"], "status": "done", "inspection_result": "Fail",
         "findings": "Belt worn through"})
     assert lines_of(action)["Result"] == "Not recorded → Fail"
     done = actions.confirm(db, people["boss"], action.id)
     assert done.status == "executed", done.error
-    job = db.get(ServiceRequest, raised.result["work_order_id"])
+    job = db.get(ServiceRequest, old_job["id"])
     db.refresh(job)
     assert (job.inspection_result, job.findings) == ("fail", "Belt worn through")
     db.close()
-    print("ok  an inspection is raised for an assignee given as text and closed with its result and findings")
+    print("ok  an old inspection job closes with its result and findings; a new one is sent to inspect-now")
 
 
 def test_the_new_changes_are_offered_to_the_agent():

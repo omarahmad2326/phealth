@@ -526,6 +526,7 @@ def category_equipment(
     facility_id: Optional[int] = None,
     category: Optional[str] = None,
     condition: Optional[str] = None,
+    department: Optional[str] = None,
     building: Optional[str] = None,
     query: Optional[str] = None,
     limit: int = 25,
@@ -549,6 +550,15 @@ def category_equipment(
         rows = rows.filter(Equipment.discipline_id == ids[chosen.code])
     if condition:
         rows = rows.filter(Equipment.condition == condition)
+    from app.assistant.tools.inspections import department_named
+    from app.models.department import Department
+
+    chosen_department = None
+    if department and department.strip().lower() in ("none", "no department", "not in a department"):
+        rows = rows.filter(Equipment.department_id.is_(None))
+    elif department:
+        chosen_department = department_named(ctx, [ctx.db.get(Facility, site)], department)
+        rows = rows.filter(Equipment.department_id == chosen_department.id)
     if building:
         rows = rows.filter(func.lower(Equipment.building) == building.strip().lower())
     if query and query.strip():
@@ -557,9 +567,11 @@ def category_equipment(
                                Equipment.asset_tag.ilike(like), Equipment.location.ilike(like),
                                Equipment.floor.ilike(like), Equipment.building.ilike(like)))
     total = rows.count()
-    found = rows.order_by(Equipment.building, Equipment.floor, Equipment.name).limit(clamp_limit(limit)).all()
+    found = rows.order_by(Equipment.name).limit(clamp_limit(limit)).all()
     facts = site_categories.job_facts(ctx.db, [a.id for a in found])
     values = site_categories.value_facts(ctx.db, found)
+    department_names = dict(ctx.db.query(Department.id, Department.name).filter(
+        Department.facility_id == site).all())
     items = []
     for asset in found:
         code = code_of[asset.discipline_id]
@@ -567,7 +579,9 @@ def category_equipment(
                                          values.get(asset.id))
         items.append({
             "asset_id": item["id"], "asset_tag": item["asset_tag"], "name": item["name"],
-            "category": item["category_name"], "type": item["type"], "where": item["location_label"] or None,
+            "category": item["category_name"], "type": item["type"],
+            "department": department_names.get(asset.department_id) or "Not in a department",
+            "where": item["location_label"] or None,
             "quantity": item["quantity"], "condition": item["condition_label"],
             "open_jobs": item["open_jobs"],
             "next_service_on": item["next_service_on"].isoformat() if item["next_service_on"] else None,
@@ -586,6 +600,7 @@ def category_equipment(
             "book_value": money(c["book_value"]), "equipment_with_book_value": c["valued_equipment"],
         } for c in summary]},
         applied_filters={"facility_id": site, "category": category, "condition": condition,
+                         "department": chosen_department.name if chosen_department else department,
                          "building": building, "query": query},
     )
 
