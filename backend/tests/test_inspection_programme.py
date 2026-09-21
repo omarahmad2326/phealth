@@ -484,6 +484,74 @@ def test_the_dashboard_counts_items_across_sites():
     print("ok  the dashboard counts items per site, worst first, with the site's size")
 
 
+def test_each_site_is_passed_failed_overdue_or_all_passed():
+    """The cards above the sites count sites, each judged on its items' latest results."""
+    db, site, other, people, departments, equipment, _ = build()
+
+    def judge():
+        db.commit()
+        board = programme.dashboard(db, [site, other], today=TODAY)
+        return board, {row["name"]: row for row in board["sites"]}
+
+    def result(key, outcome, *, next_due):
+        item = db.get(Equipment, equipment[key]["id"])
+        item.last_inspection_result = outcome
+        item.last_pm_date = TODAY - timedelta(days=1)
+        item.next_generated_pm_date = next_due
+
+    board, rows = judge()
+    assert rows["Texas Pain Facility"]["status"] is None, "nothing inspected yet is none of the four"
+    assert rows["Karachi Hospital"]["status"] is None
+    assert board["site_totals"] == {"sites": 2, "passed": 0, "failed": 0, "overdue": 1, "passed_all": 0}
+
+    # One pass, the rest not inspected yet: Passed, not Passed all.
+    result("ct", "pass", next_due=TODAY + timedelta(days=90))
+    board, rows = judge()
+    assert rows["Texas Pain Facility"]["status"] == "passed"
+    assert board["site_totals"]["passed"] == 1 and board["site_totals"]["overdue"] == 0
+
+    # Everything inspected and passed, nothing overdue: Passed all - which is also Passed.
+    for key in ("xray", "ultrasound", "fridge", "generator"):
+        result(key, "pass", next_due=TODAY + timedelta(days=90))
+    board, rows = judge()
+    texas = rows["Texas Pain Facility"]
+    assert (texas["status"], texas["status_label"]) == ("passed_all", "Passed all")
+    assert board["site_totals"] == {"sites": 2, "passed": 1, "failed": 0, "overdue": 0, "passed_all": 1}
+
+    # A pass that has since fallen overdue: still Passed, no longer Passed all, and Overdue.
+    result("ultrasound", "pass", next_due=TODAY - timedelta(days=3))
+    board, rows = judge()
+    assert rows["Texas Pain Facility"]["status"] == "passed"
+    assert board["site_totals"] == {"sites": 2, "passed": 1, "failed": 0, "overdue": 1, "passed_all": 0}
+
+    # One failure outranks every pass: Failed, and Overdue as well.
+    result("xray", "fail", next_due=TODAY)
+    board, rows = judge()
+    assert rows["Texas Pain Facility"]["status"] == "failed"
+    assert board["site_totals"] == {"sites": 2, "passed": 0, "failed": 1, "overdue": 1, "passed_all": 0}
+    # A red tag is a failure too.
+    assert programme.site_status({**programme._blank_counts(), "items": 3, "passed": 2, "red_tagged": 1}) == "failed"
+
+    # Inside the site: passed out of total per department, then the rest, adding up.
+    fleet_api.add_vehicle(VehicleIn(facility_id=site.id, name="Van 2", frequency="monthly"),
+                          db=db, current_user=people["boss"])
+    board, rows = judge()
+    texas = rows["Texas Pain Facility"]
+    parts = {part["name"]: part for part in texas["breakdown"]}
+    assert [part["name"] for part in texas["breakdown"]] == ["Pharmacy", "Radiology", "Not in a department", "Fleet"]
+    assert (parts["Radiology"]["passed"], parts["Radiology"]["failed"], parts["Radiology"]["items"]) == (2, 1, 3)
+    assert (parts["Pharmacy"]["passed"], parts["Pharmacy"]["items"]) == (1, 1)
+    assert parts["Not in a department"]["kind"] == "unassigned" and parts["Not in a department"]["items"] == 1
+    assert parts["Fleet"]["kind"] == "fleet" and (parts["Fleet"]["passed"], parts["Fleet"]["items"]) == (0, 1)
+    assert parts["Radiology"]["id"] == departments["radiology"].id
+    assert sum(part["items"] for part in texas["breakdown"]) == texas["items"]
+    assert sum(part["passed"] for part in texas["breakdown"]) == texas["passed"]
+    assert sum(part["failed"] for part in texas["breakdown"]) == texas["failed"] + texas["red_tagged"]
+    assert rows["Karachi Hospital"]["breakdown"] == [], "a site with no departments shows none"
+    db.close()
+    print("ok  each site is passed, failed, overdue or all passed, and its departments add up to it")
+
+
 def test_falling_due_tells_people_and_creates_nothing():
     db, site, _, people, departments, equipment, _ = build()
     before = db.query(ServiceRequest).count()

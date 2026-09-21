@@ -34,20 +34,27 @@ export function ResultChip({ result }: { result?: Result | null }) {
 }
 
 /** A count with a word under it, as the dashboard and site page show them. */
-export function CountTile({ label, value, tone, onClick }: {
+export function CountTile({ label, value, tone, onClick, active, action = 'Show the list' }: {
   label: string; value: number; tone?: { color: string; bg: string }; onClick?: () => void
+  /** The card is the filter in use. */
+  active?: boolean
+  /** What clicking does, for screen readers. */
+  action?: string
 }) {
   return (
     <Box
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      aria-label={onClick ? `${label}: ${value}. Show the list` : undefined}
+      aria-label={onClick ? `${label}: ${value}. ${action}` : undefined}
+      aria-pressed={onClick && active !== undefined ? active : undefined}
       onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } : undefined}
       sx={{
         p: 1.4, borderRadius: '14px', minWidth: 96, flex: '1 1 96px',
         bgcolor: tone?.bg ?? palette.surfaceMuted, cursor: onClick ? 'pointer' : 'default',
-        border: `1px solid ${tone ? 'transparent' : palette.borderSoft}`,
+        border: active ? `2px solid ${tone?.color ?? palette.brand}`
+          : `1px solid ${tone ? 'transparent' : palette.borderSoft}`,
+        m: active ? '-1px' : 0,
         transition: 'transform 0.12s ease, box-shadow 0.12s ease',
         ...(onClick ? {
           '&:hover': { transform: 'translateY(-1px)', boxShadow: '0 4px 14px rgba(15,23,42,0.08)' },

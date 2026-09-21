@@ -139,7 +139,7 @@ screen is what an authority would be shown.
 
 | Screen | Path |
 |---|---|
-| Sites: one row per site; a row drops open into its six counts and Open site | `/sites?open=:id` |
+| Sites: four site cards, one row per site with its status, departments inside | `/sites?show=:card&open=:id` |
 | Dashboard block: item counts per site, with a site picker | `/dashboard` |
 | Inspection status: the items behind any count card | `/inspection-status?state=&site=&department=&kind=` |
 | Service: faults and malfunctions, assigned and costed | `/service` |
@@ -162,6 +162,26 @@ the site" means. Two things that were the same idea in two places are gone:
   onto its item's clock by migration `e8a2b4c6d0f3` and then retired. Plans on
   assets that are not in the inspection programme are left alone and still
   generate work, because for them the plan is the only clock they have.
+
+### How a site stands
+
+The Sites page counts **sites**, each judged on its items' latest results
+(`site_status` in the service):
+
+| Status | Rule |
+|---|---|
+| Failed | any item is failed or red-tagged |
+| Passed all | every item inspected and passed, nothing overdue |
+| Passed | something has passed and nothing is failing (some may be overdue or not inspected yet) |
+| none | nothing inspected yet ("Not inspected yet") |
+
+The four cards - Passed, Failed, Overdue, Passed all inspections - overlap on
+purpose: a site can be Failed and Overdue, and every Passed all site is also
+Passed. A card filters the rows to its sites. Each row drops open into its
+departments, each showing equipment passed out of total and how many failed
+(red tags included), then *Not in a department* and *Fleet* when they hold
+anything; they come from the same classified items as the site's numbers, so
+they add up. The old Sealed / Under review badge is not used here.
 
 ### Count cards open their list
 

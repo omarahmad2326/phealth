@@ -388,14 +388,66 @@ def classify_items(db: Session, facility_id: int, *, today: Optional[date] = Non
     return rows
 
 
-def site_counts(db: Session, facility_id: int, *, today: Optional[date] = None) -> dict[str, int]:
-    """The site's item counts: the numbers on the dashboard and the site page."""
+def _count(rows: list[dict[str, Any]]) -> dict[str, int]:
     counts = _blank_counts()
-    for row in classify_items(db, facility_id, today=today):
+    for row in rows:
         counts["items"] += 1
         for state in row["states"]:
             counts[state] += 1
     return counts
+
+
+def site_counts(db: Session, facility_id: int, *, today: Optional[date] = None) -> dict[str, int]:
+    """The site's item counts: the numbers on the dashboard and the site page."""
+    return _count(classify_items(db, facility_id, today=today))
+
+
+# How a site stands, judged on each item's latest result.
+SITE_STATUSES: dict[str, str] = {"passed_all": "Passed all", "passed": "Passed", "failed": "Failed"}
+
+
+def site_status(counts: dict[str, int]) -> Optional[str]:
+    """Failed when anything is failed or red-tagged. Passed all when every
+    item has been inspected and passed and nothing is overdue. Passed when
+    something has passed and nothing is failing, though some items may be
+    overdue or not inspected yet. A site with nothing inspected is none."""
+    if counts["failed"] or counts["red_tagged"]:
+        return "failed"
+    if counts["items"] and counts["passed"] == counts["items"] and not counts["overdue"]:
+        return "passed_all"
+    if counts["passed"]:
+        return "passed"
+    return None
+
+
+def site_breakdown(db: Session, facility_id: int, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Passed out of total for each department, then items in no department
+    and the fleet when there are any. Built from the same classified rows as
+    the site's numbers, so the parts always add up to the whole."""
+    groups: dict[tuple, dict[str, int]] = {}
+    for row in rows:
+        key = ("fleet", None) if row["kind"] == "vehicle" else ("department", row["item"].department_id)
+        group = groups.setdefault(key, {"items": 0, "passed": 0, "failed": 0, "red_tagged": 0})
+        group["items"] += 1
+        states = row["states"]
+        if "passed" in states:
+            group["passed"] += 1
+        if "failed" in states or "red_tagged" in states:
+            group["failed"] += 1  # a red tag is a failure, and says so
+        if "red_tagged" in states:
+            group["red_tagged"] += 1
+
+    empty = {"items": 0, "passed": 0, "failed": 0, "red_tagged": 0}
+    departments = db.query(Department.id, Department.name).filter(
+        Department.facility_id == facility_id).order_by(func.lower(Department.name)).all()
+    parts = [{"kind": "department", "id": department_id, "name": name,
+              **groups.get(("department", department_id), empty)} for department_id, name in departments]
+    if ("department", None) in groups:
+        parts.append({"kind": "unassigned", "id": None, "name": "Not in a department",
+                      **groups[("department", None)]})
+    if ("fleet", None) in groups:
+        parts.append({"kind": "fleet", "id": None, "name": "Fleet", **groups[("fleet", None)]})
+    return parts
 
 
 def status_rows(db: Session, facilities: Iterable, state: str, *, today: Optional[date] = None,
@@ -429,9 +481,11 @@ def dashboard(db: Session, facilities: Iterable, *, today: Optional[date] = None
     today = today or utc_today()
     sites, totals = [], _blank_counts()
     for facility in facilities:
-        counts = site_counts(db, facility.id, today=today)
+        rows = classify_items(db, facility.id, today=today)
+        counts = _count(rows)
         for key, value in counts.items():
             totals[key] += value
+        status = site_status(counts)
         sites.append({
             "facility_id": facility.id,
             "name": facility.name,
@@ -444,9 +498,21 @@ def dashboard(db: Session, facilities: Iterable, *, today: Optional[date] = None
             "vehicles": db.query(func.count(Vehicle.id)).filter(
                 Vehicle.facility_id == facility.id).scalar() or 0,
             **counts,
+            "status": status,
+            "status_label": SITE_STATUSES.get(status) if status else None,
+            "breakdown": site_breakdown(db, facility.id, rows),
         })
     sites.sort(key=lambda row: (-row["red_tagged"], -row["overdue"], row["name"].lower()))
-    return {"totals": totals, "sites": sites, "as_of": today}
+    # The cards above the sites: sites, not items. They overlap on purpose -
+    # a site can be Failed and Overdue, and every Passed all site has Passed.
+    site_totals = {
+        "sites": len(sites),
+        "passed": sum(1 for row in sites if row["status"] in ("passed", "passed_all")),
+        "failed": sum(1 for row in sites if row["status"] == "failed"),
+        "overdue": sum(1 for row in sites if row["overdue"]),
+        "passed_all": sum(1 for row in sites if row["status"] == "passed_all"),
+    }
+    return {"totals": totals, "sites": sites, "site_totals": site_totals, "as_of": today}
 
 
 # ── visits ───────────────────────────────────────────────────────────────────

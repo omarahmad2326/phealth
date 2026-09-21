@@ -23,6 +23,21 @@ export interface Counts {
   not_scheduled: number
 }
 
+/** How a site stands, on its items' latest results. None: nothing inspected. */
+export type SiteStatus = 'passed_all' | 'passed' | 'failed'
+
+/** Passed out of total in one department - or items in none, or the fleet. */
+export interface BreakdownRow {
+  kind: 'department' | 'unassigned' | 'fleet'
+  id: number | null
+  name: string
+  items: number
+  passed: number
+  /** Includes the red-tagged: a red tag is a failure. */
+  failed: number
+  red_tagged: number
+}
+
 export interface DashboardSite extends Counts {
   facility_id: number
   name: string
@@ -32,11 +47,16 @@ export interface DashboardSite extends Counts {
   size_band?: 'small' | 'medium' | 'large' | null
   departments: number
   vehicles: number
+  status: SiteStatus | null
+  status_label: string | null
+  breakdown: BreakdownRow[]
 }
 
 export interface InspectionDashboard {
   totals: Counts
   sites: DashboardSite[]
+  /** Sites, not items, and overlapping: Failed and Overdue can both hold a site. */
+  site_totals: { sites: number; passed: number; failed: number; overdue: number; passed_all: number }
   as_of: string
   frequencies: Array<{ value: Frequency; label: string }>
   due_soon_days: number
