@@ -9,7 +9,7 @@
  * the product does is still in the module launcher.
  */
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
@@ -48,6 +48,15 @@ export default function SiteDashboard() {
   const user = useAuthStore((s) => s.user)
   const setFacilityId = useFacilityStore((s) => s.setFacilityId)
   const [panel, setPanel] = useState<'details' | 'people' | 'departments' | null>(null)
+  // People here is also in the side bar, which lands here asking for it.
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    if (params.get('panel') !== 'people') return
+    setPanel('people')
+    const next = new URLSearchParams(params)
+    next.delete('panel')
+    setParams(next, { replace: true })
+  }, [params, setParams])
 
   const showCategories = hasPermission(user, 'facility-inventory', 'index')
   const showService = hasPermission(user, SERVICE_LINK.module, 'index')

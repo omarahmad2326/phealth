@@ -152,6 +152,17 @@ screen is what an authority would be shown.
 | Red tags | `/red-tags` |
 | Form builder (unchanged) | `/inspections` |
 
+The side bar follows the same flow. The rail has **Sites** and the site you
+are in, one click from anywhere. The menu is three sections: **All sites**
+(Sites, Inspection status); **This site**, laid out exactly like the site's
+dashboard - Dashboard, People here, then Inspections, Facility (the seven
+categories), Service (Inspection, Service) and Compliance, with the screens
+the dashboard does not show (Inspection forms, Asset Register, Assets & Value,
+Parts & Spares, Test Equipment, Contractors) at the end of their section; and
+**Organisation**, where the revenue dashboard is **Business dashboard**, so
+"Dashboard" inside a site only ever means that site's. **People here** lists
+everyone assigned to the site - main or additional, any role - and nobody else.
+
 The site bar reads: **Site · Inspections ▾ · Service · Facility ▾ ·
 Compliance ▾** (compliance and permits to work), which is what "they live under
 the site" means. Two things that were the same idea in two places are gone:

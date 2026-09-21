@@ -31,61 +31,90 @@ import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 import HomeRepairServiceIcon from '@mui/icons-material/HomeRepairService'
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
+import HomeRoundedIcon from '@mui/icons-material/HomeRounded'
+import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined'
+import ListAltIcon from '@mui/icons-material/ListAlt'
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
+import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline'
+import InsightsIcon from '@mui/icons-material/Insights'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
-import { getVisibleModules, type Module } from '@/config/permissions'
+import { getVisibleModules, hasPermission, type Module, type PermissionAction } from '@/config/permissions'
+import { CATEGORIES } from '@/config/siteCategories'
 import { palette } from '@/theme/palette'
 
-// Grouped the way somebody running a hospital thinks about it — the
-// building, the work done to it, the things in it — rather than the way a
-// contractor managing many client sites did.
+// The side bar follows the dashboard flow. First what spans every site:
+// Sites, the page you land on, and the lists behind its cards. Then the site
+// you are in, laid out exactly as its own dashboard is - Dashboard, then
+// Inspections, Facility, Service and Compliance, each starting with the tiles
+// that dashboard shows, in its order, with the few screens it does not show
+// at the end of the section they belong to. Then the organisation above the
+// sites. "Dashboard" inside a site only ever means that site's dashboard.
 type ModuleGroup =
-  | 'Overview' | 'Inspections' | 'Service'
-  | 'Assets' | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
+  | 'All sites' | 'Site' | 'Inspections' | 'Facility' | 'Service' | 'Compliance'
+  | 'Organisation' | 'People' | 'Commerce' | 'Workspace'
 
 /**
- * Whether a module belongs to one hospital or to the organisation above them.
- *
- * Once you are inside a site, the navigation should be that site's — Buildings
- * & Rooms means *these* buildings. Users, HR and the site list itself are not
- * about any one hospital, so they stay in a separate section rather than
- * implying they are scoped when they are not.
+ * Whether a module spans every site, belongs to the site you are in, or to
+ * the organisation above them. Site screens only show once a site is open.
  */
-type ModuleScope = 'site' | 'org'
+type ModuleScope = 'all' | 'site' | 'org'
 
 interface SidebarItem {
   text: string
   description: string
   icon: JSX.Element
+  /** `:site` stands for the site you are in. */
   path: string
   module: Module
   group: ModuleGroup
   scope?: ModuleScope
+  /** Beyond seeing the module, what the person must be allowed to do. */
+  action?: PermissionAction
+  /** Only this exact address counts as being here, not the pages under it. */
+  exact?: boolean
+  /** Does something rather than go somewhere, so it is never "where you are". */
+  command?: boolean
   subItems?: { text: string; path: string }[]
 }
 
 const groupOrder: ModuleGroup[] = [
-  'Overview', 'Inspections', 'Service', 'Assets',
-  'Compliance', 'People', 'Commerce', 'Workspace',
+  'All sites', 'Site', 'Inspections', 'Facility', 'Service', 'Compliance',
+  'Organisation', 'People', 'Commerce', 'Workspace',
 ]
 
+/** Groups whose section heading already says what they are. */
+const UNTITLED_GROUPS: ModuleGroup[] = ['All sites', 'Site', 'Organisation']
+
 const allMenuItems: SidebarItem[] = [
-  { text: 'Dashboard', description: 'Your operational overview', icon: <DashboardIcon />, path: '/dashboard', module: 'dashboard', group: 'Overview' },
-  // Inspecting is what the product is for, so it is the first group. A
-  // site's own screens - Facility, Equipment Maintenance, Compliance - are
-  // reached from the site itself rather than repeated here.
-  { text: 'Departments', description: "Each department, its items and what is due", icon: <DomainOutlinedIcon />, path: '/departments', module: 'inspections', group: 'Inspections' },
+  // ── every site ──
+  { text: 'Sites', description: 'Every site: passed, failed, overdue', icon: <HomeRoundedIcon />, path: '/sites', module: 'facilities', group: 'All sites', scope: 'all', exact: true },
+  { text: 'Inspection status', description: 'What passed, failed, is due or overdue', icon: <ListAltIcon />, path: '/inspection-status', module: 'inspections', group: 'All sites', scope: 'all' },
+  // ── this site, as its dashboard lays it out ──
+  { text: 'Dashboard', description: "This site's own dashboard", icon: <DashboardIcon />, path: '/sites/:site', module: 'facilities', group: 'Site', exact: true },
+  { text: 'People here', description: 'Everyone assigned to this site', icon: <PeopleOutlineIcon />, path: '/sites/:site?panel=people', module: 'facilities', group: 'Site', command: true },
+  { text: 'Departments', description: 'Each department, its items and what is due', icon: <DomainOutlinedIcon />, path: '/departments', module: 'inspections', group: 'Inspections' },
   { text: 'Visits', description: 'Scheduled inspections and their results', icon: <EventAvailableIcon />, path: '/inspection-visits', module: 'inspections', group: 'Inspections' },
   { text: 'Fleet', description: "This site's vehicles and their inspections", icon: <LocalShippingIcon />, path: '/fleet', module: 'inspections', group: 'Inspections' },
   { text: 'Red tags', description: 'What is not up to standard, and what was done', icon: <ReportProblemOutlinedIcon />, path: '/red-tags', module: 'inspections', group: 'Inspections' },
   { text: 'Inspection forms', description: 'Build the checklists departments are inspected on', icon: <DescriptionOutlinedIcon />, path: '/inspections', module: 'inspections', group: 'Inspections' },
-  // Service is its own thing: work raised because something is at fault.
+  ...CATEGORIES.map((category): SidebarItem => ({
+    text: category.name, description: `${category.name} equipment at this site`, icon: category.icon,
+    path: category.path, module: 'facility-inventory', group: 'Facility',
+  })),
+  { text: 'Asset Register', description: 'Every machine, its plan, history and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory', group: 'Facility' },
+  { text: 'Assets & Value', description: 'Cost, book value, and full history', icon: <AccountBalanceIcon />, path: '/asset-ledger', module: 'facility-inventory', group: 'Facility' },
+  { text: 'Parts & Spares', description: 'Sales and rental parts', icon: <InventoryIcon />, path: '/inventory', module: 'inventory', group: 'Facility' },
+  { text: 'Test Equipment', description: 'Global test equipment library', icon: <ScienceIcon />, path: '/test-equipment', module: 'test-equipment', group: 'Facility' },
+  // Inspect to keep things to standard, service when something is at fault:
+  // side by side, as on the site's dashboard.
+  { text: 'Inspection', description: 'Start an inspection now', icon: <PlaylistAddCheckIcon />, path: '/inspection-visits?new=1', module: 'inspections', group: 'Service', action: 'add', command: true },
   { text: 'Service', description: 'Faults and malfunctions, assigned and costed', icon: <HomeRepairServiceIcon />, path: '/service', module: 'service-requests', group: 'Service' },
+  { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Compliance' },
   { text: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />, path: '/permits', module: 'permits', group: 'Compliance' },
   { text: 'Contractors', description: 'Contractors, contracts, and credentials', icon: <HandshakeIcon />, path: '/vendors', module: 'vendors', group: 'Compliance' },
-  { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Compliance' },
-  { text: 'Asset Register', description: 'Every machine, its plan, history and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory', group: 'Assets' },
-  { text: 'Assets & Value', description: 'Cost, book value, and full history', icon: <AccountBalanceIcon />, path: '/asset-ledger', module: 'facility-inventory', group: 'Assets' },
+  // ── the organisation ──
+  { text: 'Business dashboard', description: 'Revenue, collections and alerts', icon: <InsightsIcon />, path: '/dashboard', module: 'dashboard', group: 'Organisation', scope: 'org' },
   {
     text: 'Sales', description: 'Quotations, invoices, and sales', icon: <ShoppingCartIcon />, path: '/sales/quotations', module: 'sales', group: 'Commerce', scope: 'org',
     subItems: [
@@ -104,8 +133,6 @@ const allMenuItems: SidebarItem[] = [
       { text: 'History', path: '/rentals/history' },
     ],
   },
-  { text: 'Parts & Spares', description: 'Sales and rental parts', icon: <InventoryIcon />, path: '/inventory', module: 'inventory', group: 'Assets' },
-  { text: 'Test Equipment', description: 'Global test equipment library', icon: <ScienceIcon />, path: '/test-equipment', module: 'test-equipment', group: 'Assets' },
   { text: 'Billing', description: 'Invoices, payments, and ledgers', icon: <PaymentIcon />, path: '/billing', module: 'billing', group: 'Commerce', scope: 'org' },
   { text: 'Users', description: 'Users, roles, and permissions', icon: <PeopleIcon />, path: '/users', module: 'users', group: 'People', scope: 'org' },
   { text: 'HR', description: 'Human resources management', icon: <GroupsIcon />, path: '/hr', module: 'hr', group: 'People', scope: 'org' },
@@ -129,20 +156,25 @@ const Sidebar = () => {
   const { facility } = useActiveFacility()
   const visibleModules = getVisibleModules(user)
   const menuItems = useMemo(
-    () => allMenuItems.filter((item) => visibleModules.includes(item.module)),
-    [visibleModules],
+    () => allMenuItems.filter((item) => visibleModules.includes(item.module)
+      && (!item.action || hasPermission(user, item.module, item.action))),
+    [visibleModules, user],
   )
 
+  /** Where an item goes, with `:site` read as the site you are in. */
+  const pathFor = (item: SidebarItem) =>
+    facility ? item.path.replace(':site', String(facility.id)) : item.path
+
   const isActive = (item: SidebarItem) => {
-    if (item.module === 'dashboard' && facility) {
-      return location.pathname === `/sites/${facility.id}`
-    }
+    if (item.command) return false
+    const path = pathFor(item).split('?')[0]
+    if (item.exact) return location.pathname === path
     if (item.subItems) {
       return item.subItems.some((subItem) => (
         location.pathname === subItem.path || location.pathname.startsWith(`${subItem.path}/`)
       ))
     }
-    return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
+    return location.pathname === path || location.pathname.startsWith(`${path}/`)
   }
 
   const currentItem = menuItems.find(isActive)
@@ -162,10 +194,11 @@ const Sidebar = () => {
     }))
     .filter(({ items }) => items.length > 0)
 
-  const siteGroups = groupsOf('site')
+  const allSiteGroups = groupsOf('all')
+  const siteGroups = facility ? groupsOf('site') : []
   const orgGroups = groupsOf('org')
   // Used only for the empty-search message, so it still reflects everything.
-  const groupedItems = [...siteGroups, ...orgGroups]
+  const groupedItems = [...allSiteGroups, ...siteGroups, ...orgGroups]
 
   const closeLauncher = () => {
     setLauncherOpen(false)
@@ -201,17 +234,9 @@ const Sidebar = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [launcherOpen])
 
-  /**
-   * Inside a site, Dashboard means *this* site's dashboard. Sending it to the
-   * global one would quietly drop the context the launcher header is showing.
-   */
-  const pathFor = (item: SidebarItem) =>
-    item.module === 'dashboard' && facility ? `/sites/${facility.id}` : item.path
-
   /** Groups whose items should collapse under a dropdown toggle. */
   const COLLAPSIBLE_GROUPS: ModuleGroup[] = [
-    'Inspections', 'Assets',
-    'Compliance', 'People', 'Commerce', 'Workspace',
+    'Inspections', 'Facility', 'Compliance', 'People', 'Commerce', 'Workspace',
   ]
 
   useEffect(() => {
@@ -224,7 +249,7 @@ const Sidebar = () => {
   const renderGroups = (groups: Array<{ group: ModuleGroup; items: SidebarItem[] }>) =>
     groups.map(({ group, items }) => {
       const collapsible = COLLAPSIBLE_GROUPS.includes(group)
-      const expanded = expandedGroups.has(group)
+      const expanded = expandedGroups.has(group) || Boolean(normalizedSearch)
       const anyActive = items.some(isActive)
 
       return (
@@ -264,7 +289,7 @@ const Sidebar = () => {
                         <Box sx={{ ml: 'auto', width: 7, height: 7, borderRadius: '50%', bgcolor: palette.brand }} />
                       )}
                     </Box>
-                  ) : (
+                  ) : UNTITLED_GROUPS.includes(group) ? null : (
                     /* ── Normal static group header ───────────────────── */
                     <Typography sx={{ px: 0.75, mb: 0.7, color: '#8992A4', fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
                       {group}
@@ -411,6 +436,20 @@ const Sidebar = () => {
         M
       </Box>
 
+      {visibleModules.includes('facilities') && (
+        <RailButton
+          label="Sites" icon={<HomeRoundedIcon />} active={location.pathname === '/sites'}
+          onClick={() => openModule('/sites')}
+        />
+      )}
+      {facility && visibleModules.includes('facilities') && (
+        <RailButton
+          label={facility.name} icon={<LocalHospitalOutlinedIcon />}
+          active={location.pathname === `/sites/${facility.id}`}
+          onClick={() => openModule(`/sites/${facility.id}`)}
+        />
+      )}
+
       <Tooltip title={launcherOpen ? 'Close modules' : `Open modules${currentItem ? ` · ${currentItem.text}` : ''}`} placement="right" arrow>
         <Box
           component="button" type="button" aria-label="Open module navigation"
@@ -437,19 +476,6 @@ const Sidebar = () => {
         </Box>
       </Tooltip>
 
-      {currentItem && (
-        <Tooltip title={`Current: ${currentItem.text}`} placement="right" arrow>
-          <Box
-            sx={{
-              mt: { xs: 0, sm: 1 }, width: 40, height: 40, borderRadius: '14px', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.8)',
-              background: 'rgba(6,78,59,0.14)', '& svg': { fontSize: '1.2rem' },
-            }}
-          >
-            {currentItem.icon}
-          </Box>
-        </Tooltip>
-      )}
 
       <Box sx={{ flex: 1 }} />
 
@@ -574,20 +600,18 @@ const Sidebar = () => {
                 scrollbarWidth: 'thin', scrollbarColor: 'rgba(4,120,87,0.25) transparent',
               }}
             >
-              {facility && renderGroups(siteGroups)}
-
-              {orgGroups.length > 0 && (
-                <Box sx={facility
-                  ? { mt: 0.5, pt: 1.75, borderTop: `1px solid ${palette.borderSoft}` }
-                  : {}}>
-                  {facility && (
-                    <Typography sx={{ px: 0.75, mb: 1.25, color: palette.textFaint, fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
-                      Across all sites
-                    </Typography>
-                  )}
-                  {renderGroups(orgGroups)}
+              {([
+                ['All sites', allSiteGroups],
+                ['This site', siteGroups],
+                ['Organisation', orgGroups],
+              ] as const).filter(([, groups]) => groups.length > 0).map(([title, groups], index) => (
+                <Box key={title} sx={index ? { mt: 0.5, pt: 1.75, borderTop: `1px solid ${palette.borderSoft}` } : {}}>
+                  <Typography sx={{ px: 0.75, mb: 1.25, color: palette.textFaint, fontSize: '0.67rem', fontWeight: 900, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
+                    {title}
+                  </Typography>
+                  {renderGroups(groups)}
                 </Box>
-              )}
+              ))}
 
 
               {groupedItems.length === 0 && (
@@ -609,6 +633,33 @@ const Sidebar = () => {
         </>
       )}
     </Box>
+  )
+}
+
+/** A destination on the rail: Sites, or the site you are in. */
+function RailButton({ label, icon, active, onClick }: {
+  label: string; icon: JSX.Element; active: boolean; onClick: () => void
+}) {
+  return (
+    <Tooltip title={label} placement="right" arrow>
+      <Box
+        component="button" type="button" aria-label={label} aria-current={active ? 'page' : undefined}
+        onClick={onClick}
+        sx={{
+          width: { xs: 42, sm: 48 }, height: { xs: 42, sm: 48 }, p: 0, borderRadius: { xs: '14px', sm: '16px' },
+          border: `1px solid ${active ? '#fff' : 'rgba(255,255,255,0.18)'}`,
+          background: active ? '#fff' : 'transparent',
+          color: active ? palette.brand : 'rgba(255,255,255,0.86)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          transition: 'transform 180ms ease, background-color 180ms ease',
+          '&:hover': { transform: 'translateY(-2px)', background: active ? '#fff' : 'rgba(255,255,255,0.16)' },
+          '&:focus-visible': { outline: '3px solid rgba(255,255,255,0.42)', outlineOffset: 3 },
+          '& svg': { fontSize: '1.35rem' },
+        }}
+      >
+        {icon}
+      </Box>
+    </Tooltip>
   )
 }
 
