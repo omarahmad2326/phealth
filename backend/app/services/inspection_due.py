@@ -1,15 +1,15 @@
-"""What happens on its own when an inspection falls due.
+"""What happens on its own when an inspection falls due: people are told.
 
-Two things, both meant for a timer and both safe to repeat:
+Nothing is created. An item that falls due shows as due on its department, on
+the dashboard and in the next visit, and that is the whole record - a job
+raised alongside it said the same thing twice, which is what made the product
+confusing. Work is raised when an inspection finds something, or when somebody
+reports a fault.
 
-* the maintenance is raised as a service job, one per item, so the work sits
-  where all other work sits;
-* the people who have to act are told - seven days before, and on the day.
-
-Repeating is the whole design. Each item remembers which due date it has
-already had a job raised for and been notified about, so a run that overlaps
-with somebody pressing the button, or a container restart mid-cycle, cannot
-raise the same job twice.
+The notices are meant for a timer and safe to repeat: each item remembers the
+due date it has already been notified about, so a run that overlaps with
+somebody pressing the button, or a container restart mid-cycle, cannot send the
+same notice twice.
 """
 from __future__ import annotations
 
@@ -73,31 +73,12 @@ def _tell(db: Session, facility_id: int, item, *, kind: str, when: date, ahead: 
     return sent
 
 
-def _raise_job(db: Session, actor: User, item: Equipment, *, due_on: date) -> bool:
-    """The maintenance for one due item, through the same call the screen makes."""
-    from app.services import equipment_jobs
-
-    task = (item.pm_task or "").strip() or "Preventive maintenance and inspection"
-    try:
-        equipment_jobs.create(
-            db, actor, facility_id=item.facility_id, kind="service", equipment_id=item.id,
-            title=task, due_on=due_on, assigned_to_id=item.pm_assignee_id, status="open",
-            notes="Raised automatically because this item fell due for inspection.",
-            inspection_result=None, findings=None,
-        )
-    except Exception as exc:  # noqa: BLE001 - one bad item must not stop the sweep
-        logger.warning("Could not raise PM for equipment %s: %s", item.id, exc)
-        db.rollback()
-        return False
-    return True
-
-
 def run(db: Session, *, facility_ids: Iterable[int], today: Optional[date] = None) -> dict[str, Any]:
-    """Raise what is due and tell people what is coming. Does not commit."""
+    """Tell people what is due and what is coming. Creates nothing. Does not commit."""
     today = today or utc_today()
     ahead = today + timedelta(days=NOTIFY_AHEAD_DAYS)
     actor = _actor(db)
-    summary = {"considered": 0, "jobs_raised": 0, "notified": 0, "as_of": today.isoformat()}
+    summary = {"considered": 0, "notified": 0, "as_of": today.isoformat()}
 
     for facility_id in facility_ids:
         equipment = programme.equipment_query(db, facility_id).filter(
@@ -112,11 +93,6 @@ def run(db: Session, *, facility_ids: Iterable[int], today: Optional[date] = Non
         for item in equipment:
             summary["considered"] += 1
             due = item.next_generated_pm_date
-            # The job is raised once the date arrives, not while it is still coming.
-            if due <= today and item.pm_raised_on != due and actor is not None:
-                if _raise_job(db, actor, item, due_on=due):
-                    item.pm_raised_on = due
-                    summary["jobs_raised"] += 1
             if due <= today and item.notified_due_on != due:
                 summary["notified"] += _tell(db, facility_id, item, kind="equipment", when=due,
                                              ahead=False, actor_id=actor.id if actor else None)
@@ -127,8 +103,6 @@ def run(db: Session, *, facility_ids: Iterable[int], today: Optional[date] = Non
                 item.notified_ahead_on = due
 
         for item in vehicles:
-            # A vehicle has no equipment record, so there is no service job to
-            # raise against it; its work is recorded on the inspection itself.
             summary["considered"] += 1
             due = item.next_generated_pm_date
             if due <= today and item.notified_due_on != due:

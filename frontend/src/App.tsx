@@ -49,7 +49,7 @@ const InspectionVisits = lazyWithReload(() => import('./pages/InspectionVisits')
 const InspectionVisit = lazyWithReload(() => import('./pages/InspectionVisits/Visit'))
 const Fleet = lazyWithReload(() => import('./pages/Fleet'))
 const RedTags = lazyWithReload(() => import('./pages/RedTags'))
-const EquipmentMaintenance = lazyWithReload(() => import('./pages/EquipmentMaintenance'))
+const Service = lazyWithReload(() => import('./pages/Service'))
 
 const RouteFallback = () => (
   <div
@@ -185,14 +185,16 @@ function App() {
               and the service and inspection jobs done on it. */}
           <Route path="categories" element={<Navigate to="/categories/electrical" replace />} />
           <Route path="categories/:code" element={<RequireSite><ProtectedPage module="facility-inventory"><Categories /></ProtectedPage></RequireSite>} />
-          <Route path="equipment-maintenance" element={<Navigate to="/equipment-maintenance/service" replace />} />
+          <Route path="equipment-maintenance" element={<Navigate to="/service" replace />} />
           <Route path="departments" element={<RequireSite><ProtectedPage module="inspections"><Departments /></ProtectedPage></RequireSite>} />
           <Route path="departments/:id" element={<RequireSite><ProtectedPage module="inspections"><DepartmentDetail /></ProtectedPage></RequireSite>} />
           <Route path="inspection-visits" element={<RequireSite><ProtectedPage module="inspections"><InspectionVisits /></ProtectedPage></RequireSite>} />
           <Route path="inspection-visits/:id" element={<RequireSite><ProtectedPage module="inspections"><InspectionVisit /></ProtectedPage></RequireSite>} />
           <Route path="fleet" element={<RequireSite><ProtectedPage module="inspections"><Fleet /></ProtectedPage></RequireSite>} />
           <Route path="red-tags" element={<RequireSite><ProtectedPage module="inspections"><RedTags /></ProtectedPage></RequireSite>} />
-          <Route path="equipment-maintenance/:kind" element={<RequireSite><ProtectedPage module="service-requests"><EquipmentMaintenance /></ProtectedPage></RequireSite>} />
+          <Route path="service" element={<RequireSite><ProtectedPage module="service-requests"><Service /></ProtectedPage></RequireSite>} />
+          {/* Where Equipment Maintenance used to be. */}
+          <Route path="equipment-maintenance/:kind" element={<Navigate to="/service" replace />} />
           {/* Super Admin only; the page itself refuses anyone else. */}
           <Route path="assistant/documents" element={<AssistantDocuments />} />
           <Route path="asset-ledger/*" element={<RequireSite><ProtectedPage module="facility-inventory"><AssetLedger /></ProtectedPage></RequireSite>} />

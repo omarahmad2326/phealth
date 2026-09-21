@@ -54,6 +54,9 @@ class RecordItemIn(BaseModel):
     # "answers": {...}}. Stored as given; the form builder owns the shape.
     answers: Optional[list[dict]] = None
     note: Optional[str] = Field(None, max_length=2000)
+    # The inspector asking for the work: raises one service job for this item,
+    # titled from the note and linked back to this inspection.
+    raise_service: bool = False
 
 
 class FinishVisitIn(BaseModel):

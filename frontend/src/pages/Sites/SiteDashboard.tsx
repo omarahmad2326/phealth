@@ -24,10 +24,10 @@ import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import { fetchFacility, fetchSiteOverview } from '@/api/facilities'
 import {
-  fetchCategoryOverview, fetchMaintenanceSummary, formatMoney, type CategorySummary, type MaintenanceSummary,
+  fetchCategoryOverview, fetchMaintenanceSummary, formatMoney, type CategorySummary,
 } from '@/api/siteCategories'
 import { hasPermission } from '@/config/permissions'
-import { CATEGORIES, CATEGORIES_LABEL, EQUIPMENT_MAINTENANCE } from '@/config/siteCategories'
+import { CATEGORIES, CATEGORIES_LABEL, COMPLIANCE_LINKS, SERVICE_LINK } from '@/config/siteCategories'
 import { useFacilityStore } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
@@ -49,8 +49,8 @@ export default function SiteDashboard() {
   const [panel, setPanel] = useState<'details' | 'people' | 'departments' | null>(null)
 
   const showCategories = hasPermission(user, 'facility-inventory', 'index')
-  const maintenanceLinks = EQUIPMENT_MAINTENANCE.filter((link) => hasPermission(user, link.module, 'index'))
-  const showMaintenance = maintenanceLinks.length > 0
+  const showService = hasPermission(user, SERVICE_LINK.module, 'index')
+  const complianceLinks = COMPLIANCE_LINKS.filter((link) => hasPermission(user, link.module, 'index'))
   const showCompliance = hasPermission(user, 'compliance', 'index')
 
   // Arriving here by link or refresh has to set the context too, not only
@@ -214,31 +214,46 @@ export default function SiteDashboard() {
         </Section>
       )}
 
-      {showMaintenance && (
-        <Section title="Equipment Maintenance">
+      {showService && (
+        <Section title="Service">
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
-            {maintenanceLinks.map((link) => (
-              <Tile key={link.path} onClick={() => navigate(link.path)} loading={maintenance.isLoading}
-                    icon={link.icon} colour={palette.brand} title={link.name}
-                    facts={maintenanceFacts(link.path, maintenance.data)} />
-            ))}
+            <Tile
+              onClick={() => navigate(SERVICE_LINK.path)} loading={maintenance.isLoading}
+              icon={SERVICE_LINK.icon} colour={palette.brand} title="Service"
+              figure={maintenance.data ? String(maintenance.data.service.open) : undefined}
+              facts={maintenance.data ? [
+                { text: maintenance.data.service.open ? 'open now' : 'Nothing open', tone: 'plain' as const },
+                ...(maintenance.data.service.overdue
+                  ? [{ text: `${maintenance.data.service.overdue} overdue`, tone: 'danger' as const }] : []),
+              ] : []}
+            />
           </Box>
         </Section>
       )}
 
-      {showCompliance && (
+      {complianceLinks.length > 0 && (
         <Section title="Compliance">
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
-            <Tile
-              onClick={() => navigate('/compliance')} loading={overview.isLoading}
-              icon={<FactCheckOutlinedIcon />} colour={palette.accentDark} title="Compliance"
-              facts={overview.data ? [
-                overview.data.compliance.overdue
-                  ? { text: `${overview.data.compliance.overdue} overdue`, tone: 'danger' as const }
-                  : { text: 'Nothing overdue', tone: 'good' as const },
-                { text: `${overview.data.compliance.due_within_30_days} due in 30 days`, tone: 'plain' as const },
-              ] : []}
-            />
+            {complianceLinks.map((link) => (
+              <Tile
+                key={link.path} onClick={() => navigate(link.path)}
+                loading={link.path === '/compliance' ? overview.isLoading : maintenance.isLoading}
+                icon={link.icon} colour={palette.accentDark} title={link.name}
+                facts={link.path === '/compliance'
+                  ? (overview.data ? [
+                    overview.data.compliance.overdue
+                      ? { text: `${overview.data.compliance.overdue} overdue`, tone: 'danger' as const }
+                      : { text: 'Nothing overdue', tone: 'good' as const },
+                    { text: `${overview.data.compliance.due_within_30_days} due in 30 days`, tone: 'plain' as const },
+                  ] : [])
+                  : (maintenance.data?.permits ? [
+                    { text: `${maintenance.data.permits.active} in force`, tone: 'plain' as const },
+                    ...(maintenance.data.permits.awaiting_approval
+                      ? [{ text: `${maintenance.data.permits.awaiting_approval} awaiting approval`,
+                           tone: 'warning' as const }] : []),
+                  ] : [])}
+              />
+            ))}
           </Box>
         </Section>
       )}
@@ -270,34 +285,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 type Fact = { text: string; tone: 'plain' | 'good' | 'warning' | 'danger' }
 
-/** The lines on each Equipment Maintenance tile. */
-function maintenanceFacts(path: string, summary?: MaintenanceSummary): Fact[] {
-  if (!summary) return []
-  const jobs = path.endsWith('/service') ? summary.service : path.endsWith('/inspection') ? summary.inspection : null
-  if (jobs) {
-    return [
-      { text: jobs.open ? plural(jobs.open, 'open job') : 'Nothing open', tone: 'plain' },
-      ...(jobs.overdue ? [{ text: `${jobs.overdue} overdue`, tone: 'danger' as const }] : []),
-      ...(jobs.failed ? [{ text: `${jobs.failed} failed`, tone: 'danger' as const }] : []),
-    ]
-  }
-  if (path === '/maintenance' && summary.plans) {
-    const { active, overdue, due_in_30_days: soon } = summary.plans
-    return [
-      { text: active ? plural(active, 'active plan') : 'No plans yet', tone: 'plain' },
-      ...(overdue ? [{ text: `${overdue} overdue`, tone: 'danger' as const }] : []),
-      ...(soon ? [{ text: `${soon} due in 30 days`, tone: 'plain' as const }] : []),
-    ]
-  }
-  if (path === '/permits' && summary.permits) {
-    const { active, awaiting_approval: waiting } = summary.permits
-    return [
-      { text: active ? `${active} in force` : 'None in force', tone: 'plain' },
-      ...(waiting ? [{ text: `${waiting} awaiting approval`, tone: 'warning' as const }] : []),
-    ]
-  }
-  return []
-}
 
 const TONE: Record<Fact['tone'], string> = {
   plain: palette.textMuted,

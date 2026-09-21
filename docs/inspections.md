@@ -1,8 +1,16 @@
-# Inspections
+# Inspections and Service
 
-The product is inspection-led. Everything below hangs off one idea: **every
-inspectable item carries one frequency, and from it the date it next falls
-due.**
+Two words, one meaning each:
+
+* **Inspection** — the schedule that keeps equipment to standard. Recurring,
+  has a form, produces a result and the evidence an authority reads.
+* **Service** — the work raised because something is at fault or
+  malfunctioning, either found by an inspection or reported by a person. It
+  has an assignee, labour and parts, and it ends Done.
+
+Everything below hangs off one idea: **every inspectable item carries one
+frequency, and from it the date it next falls due.** There is no second
+schedule anywhere in the product.
 
 ```
 Site  ──>  Department  ──>  items (equipment)      ──┐
@@ -27,6 +35,7 @@ Site  ──>  Department  ──>  items (equipment)      ──┐
 | **Form** | A checklist built in the form builder, attached to a department (or to the fleet) with the frequency normally used there. |
 | **Visit** | A date, a scope and the items due by then. Filled in one item at a time. |
 | **Red tag** | A failure serious enough to say the standard is not met. It outlives the inspection. |
+| **Service job** | Corrective work. Raised from a failed inspection when the inspector asks for it, or by hand for a reported fault. Carries the assignee and the cost. |
 
 ## The clock
 
@@ -50,17 +59,29 @@ names, which is why one service drives both.
 
 `app/services/inspection_due.py`, run every half hour by the
 `facilities_scheduler` worker (and by hand from *POST
-/api/v1/inspection-programme/run-due*):
+/api/v1/inspection-programme/run-due*), **notifies and creates nothing**:
+inspectors, admins and Super Admins are told **7 days before** and **on the
+day**. A due item shows as due on its department, on the dashboard and in the
+next visit, and that is the whole record.
 
-* when an item falls due, its maintenance is raised as a **service job, one per
-  item**, carrying its PM task and assignee, in Equipment Maintenance;
-* inspectors, admins and Super Admins are notified **7 days before** and **on
-  the day**.
+It is idempotent: each item remembers the due date it has already been
+notified about, so a repeated run does not tell anybody twice.
 
-Both halves are idempotent: each item remembers the due date it has already had
-a job raised for and been notified about, so a repeated run raises nothing
-twice. A vehicle has no equipment record, so no service job is raised against
-it; its work is recorded on the inspection.
+## Service: the work an inspection asks for
+
+Recording **Failed** or **Red tag** offers the inspector a tick — *Raise a
+service job for this*. Ticked, it creates **one** job, titled from their note,
+assigned to whoever the item is assigned to, and linked back to the inspection
+(`service_requests.inspection_id`), so the Service list says *From inspection
+INS-000008*. Left unticked — because they fixed it on the spot — the failure is
+recorded and nothing is left open for somebody else to close. Recording the
+same item again never raises a second job.
+
+A fault nobody inspected is raised by hand on Service, as before.
+
+A vehicle has no equipment record for a job to hang on, so fleet findings stay
+on the inspection and on the red tag list. If the fleet needs its own work
+queue, that is a small addition, not a redesign.
 
 ## Red tags
 
@@ -75,6 +96,7 @@ screen is what an authority would be shown.
 | Screen | Path |
 |---|---|
 | Dashboard block: item counts per site, with a site picker | `/dashboard` |
+| Service: faults and malfunctions, assigned and costed | `/service` |
 | Site hub: the site's counts, then its departments, visits, fleet and red tags | `/sites/:id` |
 | Departments, and items not in one | `/departments` |
 | One department: forms, items, red tags, visits | `/departments/:id` |
@@ -84,10 +106,16 @@ screen is what an authority would be shown.
 | Red tags | `/red-tags` |
 | Form builder (unchanged) | `/inspections` |
 
-Facility, Equipment Maintenance and Compliance are reached from the site bar,
-which is what "they live under the site" means. Equipment Maintenance keeps
-Service, Maintenance Plans and Permits to Work; its old Inspection tab is gone,
-because inspecting happens here.
+The site bar reads: **Site · Inspections ▾ · Service · Facility ▾ ·
+Compliance ▾** (compliance and permits to work), which is what "they live under
+the site" means. Two things that were the same idea in two places are gone:
+
+* **Equipment Maintenance** as a wrapper, and its Inspection tab — inspecting
+  happens in Inspections, and its Service list is now the Service tab.
+* **Maintenance Plans** — every active plan on category equipment was folded
+  onto its item's clock by migration `e8a2b4c6d0f3` and then retired. Plans on
+  assets that are not in the inspection programme are left alone and still
+  generate work, because for them the plan is the only clock they have.
 
 ## API
 
@@ -105,6 +133,7 @@ POST inspection-programme/items/bulk-assign           many at once
 GET  inspection-programme/due                         what a visit would hold
 POST inspection-programme/visits                      schedule one
 POST inspection-programme/visits/{id}/items/{ins}     record one item
+                                                      (raise_service: the tick)
 POST inspection-programme/visits/{id}/finish
 GET  inspection-programme/red-tags                    ?include_cleared=
 POST inspection-programme/red-tags/{id}/clear         note required
@@ -115,10 +144,14 @@ POST fleet/forms                                      attach a fleet form
 
 ## Deploying it
 
-Migration `d7f1a3b5c9e2` adds the department and the clock to `equipment`, the
-size to `facilities`, the `vehicles`, `red_tags` and `inspection_form_links`
-tables, and `RED_TAG` to the `inspectionresult` enum. Every step checks first,
-so it is safe on a database built by migration or by `create_all`.
+Two migrations. `d7f1a3b5c9e2` adds the department and the clock to
+`equipment`, the size to `facilities`, the `vehicles`, `red_tags` and
+`inspection_form_links` tables, and `RED_TAG` to the `inspectionresult` enum.
+`e8a2b4c6d0f3` adds `service_requests.inspection_id` and folds the maintenance
+plans into the item clocks. Every step checks first, so both are safe on a
+database built by migration or by `create_all`; the fold is a data step, so
+its downgrade leaves the clocks in place rather than putting the duplicate
+back.
 
 ```bash
 cd /opt/phealth
@@ -131,4 +164,5 @@ docker compose up -d backend frontend facilities_scheduler
 
 Nothing is due until somebody sets it up, so after deploying: add the
 departments, attach a form to each, then *Departments → Assign items* to put
-existing equipment in a department and on a frequency.
+existing equipment in a department and on a frequency. Anything that had a
+maintenance plan already arrives with its frequency and next date filled in.

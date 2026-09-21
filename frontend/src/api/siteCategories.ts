@@ -131,6 +131,8 @@ export interface EquipmentJob {
   parts_cost: Amount
   total_cost: Amount
   is_major_work: boolean
+  /** The inspection that found this fault, when one did. */
+  from_inspection: { id: number; number: string; visit_id: number | null } | null
   created_at: string
   completed_at: string | null
   equipment: {

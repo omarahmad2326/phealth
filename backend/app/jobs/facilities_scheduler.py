@@ -5,8 +5,8 @@ if they depend on somebody pressing a button:
 
   * compliance tasks fall due and must be generated, then flipped to overdue
   * maintenance schedules fall due and must raise work orders
-  * inspections fall due: the maintenance is raised and the people who have to
-    act are told, seven days before and on the day
+  * inspections fall due and the people who have to act are told, seven days
+    before and on the day
   * approved permits whose window has passed must expire, or an approval given
     for last Tuesday keeps authorising work indefinitely
 
@@ -115,7 +115,6 @@ def run_once() -> dict[str, object]:
             "compliance_marked_overdue": overdue,
             "work_orders_generated": pm_result["generated"],
             "permits_expired": expired,
-            "inspection_jobs_raised": inspections["jobs_raised"],
             "inspection_notices_sent": inspections["notified"],
         }
         # Only log when something actually happened. A quiet estate should not

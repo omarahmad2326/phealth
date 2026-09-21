@@ -263,6 +263,11 @@ class ServiceRequest(Base):
     # Enforced instead in `app.services.work_order`: a work order must carry an
     # equipment_id or a location_id, and never neither.
     equipment_id = Column(Integer, ForeignKey("equipment.id"), nullable=True)
+    # The inspection that found this fault, when one did. Service is raised by
+    # a problem - a failed inspection, or somebody reporting a fault - so this
+    # is how a job says which it was.
+    inspection_id = Column(Integer, ForeignKey("inspections.id", ondelete="SET NULL"),
+                           nullable=True, index=True)
     location_id = Column(Integer, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True)
 
     requester_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -348,6 +353,7 @@ class ServiceRequest(Base):
     # Relationships
     facility = relationship("Facility", back_populates="service_requests")
     equipment = relationship("Equipment", back_populates="service_requests")
+    inspection = relationship("Inspection", foreign_keys=[inspection_id])
     requester = relationship("User", foreign_keys=[requester_id], back_populates="service_requests")
     assigned_technician = relationship("User", foreign_keys=[assigned_technician_id])
     location = relationship("Location", foreign_keys=[location_id])

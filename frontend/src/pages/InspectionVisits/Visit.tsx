@@ -9,13 +9,14 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, Divider, IconButton,
-  MenuItem, Stack, TextField, Typography,
+  Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, Divider,
+  FormControlLabel, IconButton, MenuItem, Stack, TextField, Typography,
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded'
 import DoneAllIcon from '@mui/icons-material/DoneAll'
+import BuildOutlinedIcon from '@mui/icons-material/BuildOutlined'
 import {
   errorMessage, fetchVisit, finishVisit, recordVisitItem, shortDate,
   type Result, type Visit, type VisitItem,
@@ -133,6 +134,11 @@ export default function VisitPage() {
                 </Typography>
               )}
             </Box>
+            {item.service && (
+              <Chip size="small" label={`Service ${item.service.number}`}
+                    sx={{ height: 22, fontSize: 11, fontWeight: 800, color: palette.brandDeep,
+                          bgcolor: palette.brandTint }} />
+            )}
             {item.result ? <ResultChip result={item.result} /> : (
               <Chip size="small" label="Fill in"
                     sx={{ height: 24, fontSize: 11.5, fontWeight: 900, color: palette.brandDeep,
@@ -177,6 +183,11 @@ function ItemPanel({ visitId, item, readOnly, onClose, onRecorded, onProblem }: 
   const [note, setNote] = useState(item.note ?? '')
   const [result, setResult] = useState<Result | ''>(item.result ?? '')
   const [problem, setProblem] = useState('')
+  // Service is work raised because something is at fault, so it is the
+  // inspector's call: a fault they fixed on the spot should leave no job
+  // behind for somebody else to close. A vehicle has no equipment record for
+  // a job to hang on, so the tick is not offered there.
+  const [raiseService, setRaiseService] = useState(false)
 
   const record = useMutation({
     mutationFn: async (chosen: Result) => recordVisitItem(visitId, item.id, {
@@ -185,6 +196,7 @@ function ItemPanel({ visitId, item, readOnly, onClose, onRecorded, onProblem }: 
         form_id: form.form_id, name: form.name, answers: answers[String(form.form_id)] ?? {},
       })),
       note: note.trim() || null,
+      raise_service: raiseService && chosen !== 'pass',
     }),
     onSuccess: onRecorded,
     onError: (error) => {
@@ -256,6 +268,33 @@ function ItemPanel({ visitId, item, readOnly, onClose, onRecorded, onProblem }: 
             onChange={(e) => setNote(e.target.value)} InputLabelProps={{ shrink: true }}
             helperText="A red tag needs one: what is wrong, in your words."
           />
+
+          {!readOnly && item.kind === 'equipment' && (
+            <FormControlLabel
+              control={<Checkbox size="small" checked={raiseService}
+                                 onChange={(e) => setRaiseService(e.target.checked)} />}
+              label={
+                <Box>
+                  <Typography sx={{ fontSize: 13.5, fontWeight: 800, color: palette.ink }}>
+                    Raise a service job for this
+                  </Typography>
+                  <Typography sx={{ fontSize: 12, fontWeight: 600, color: palette.textMuted }}>
+                    Leave it off if you have already fixed it. Ticked, it raises one job titled from your
+                    note, on Service, linked back to this inspection.
+                  </Typography>
+                </Box>
+              }
+              sx={{ alignItems: 'flex-start', m: 0 }}
+            />
+          )}
+          {item.service && (
+            <Stack direction="row" spacing={0.8} alignItems="center">
+              <BuildOutlinedIcon sx={{ fontSize: 17, color: palette.brand }} />
+              <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: palette.brandDeep }}>
+                Service {item.service.number} is open for this
+              </Typography>
+            </Stack>
+          )}
 
           {!readOnly && (
             <Stack direction="row" spacing={1}>

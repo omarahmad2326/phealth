@@ -11,8 +11,10 @@ Two rules run underneath:
 
 * A red tag outlives its inspection. The item and its department stay red
   until somebody clears it and says what was done.
-* When an item falls due, its maintenance is raised as a service job, one per
-  item, so the work is tracked where all other work is tracked.
+* Falling due creates nothing. An inspection that finds something raises
+  service work only when the inspector asks for it, and that job is linked
+  back to the inspection that found the fault. Service is for faults and
+  malfunctions; inspections are the schedule that keeps things to standard.
 
 Equipment and vehicles are deliberately given the same column names for the
 clock, so everything here works on either without asking which it has.
@@ -33,6 +35,7 @@ from app.models.inspection import Inspection, InspectionBatch, InspectionResult,
 from app.models.inspection_form import InspectionForm
 from app.models.inspection_form_link import InspectionFormLink
 from app.models.red_tag import RedTag
+from app.models.service_request import ServiceRequest
 from app.models.user import User, UserRole
 from app.models.vehicle import Vehicle
 from app.utils.clock import utc_today
@@ -583,8 +586,16 @@ def inspection_payload(db: Session, inspection: Inspection) -> dict[str, Any]:
         "note": (inspection.form_data or {}).get("note"),
         "corrective_actions": inspection.corrective_actions,
         "completed_at": inspection.completed_at,
+        "service": ({"id": job.id, "number": job.request_number,
+                     "status": equipment_jobs_status(job)} if (job := service_for(db, inspection)) else None),
         "forms": [form_payload(link, form, with_schema=True) for link, form in forms],
     }
+
+
+def equipment_jobs_status(job: ServiceRequest) -> str:
+    from app.services import equipment_jobs
+
+    return equipment_jobs.simple_status(job.status)
 
 
 def _where(item) -> Optional[str]:
@@ -593,10 +604,45 @@ def _where(item) -> Optional[str]:
     return site_categories.location_label(item) or None if item is not None else None
 
 
+def service_for(db: Session, inspection: Inspection) -> Optional[ServiceRequest]:
+    """The service job this inspection already raised, if it raised one."""
+    return (
+        db.query(ServiceRequest).filter(ServiceRequest.inspection_id == inspection.id)
+        .order_by(ServiceRequest.id.desc()).first()
+    )
+
+
+def raise_service(db: Session, user: User, inspection: Inspection, *,
+                  note: Optional[str] = None) -> Optional[ServiceRequest]:
+    """Raise the work an inspection found, once, through the screen's own call.
+
+    A vehicle has no equipment record for a job to hang on, so fleet findings
+    stay on the inspection and on the red tag list.
+    """
+    from app.services import equipment_jobs
+
+    if inspection.equipment_id is None:
+        return None
+    existing = service_for(db, inspection)
+    if existing is not None:
+        return existing
+    item = inspection.equipment
+    title = (note or "").strip() or "Fault found on inspection"
+    job = equipment_jobs.create(
+        db, user, facility_id=inspection.facility_id, kind="service",
+        equipment_id=inspection.equipment_id, title=title[:500], due_on=None,
+        assigned_to_id=item.pm_assignee_id if item is not None else None, status="open",
+        notes="Raised from inspection {}.".format(inspection.inspection_number),
+        inspection_result=None, findings=None, inspection_id=inspection.id,
+    )
+    return job
+
+
 def record_item(db: Session, user: User, inspection: Inspection, *, result: str,
                 answers: Optional[list] = None, note: Optional[str] = None,
-                today: Optional[date] = None) -> Inspection:
-    """Record one item: its answers, its result, and what the result sets off."""
+                raise_service_job: bool = False,
+                today: Optional[date] = None) -> tuple[Inspection, Optional[ServiceRequest]]:
+    """Record one item: its answers, its result, and the work it asks for."""
     today = today or utc_today()
     if result not in RESULTS:
         raise ProgrammeError("Result is one of: {}.".format(", ".join(RESULTS)))
@@ -633,7 +679,12 @@ def record_item(db: Session, user: User, inspection: Inspection, *, result: str,
         batch.status = InspectionStatus.IN_PROGRESS
         batch.started_at = batch.started_at or datetime.utcnow()
     db.flush()
-    return inspection
+
+    # Only when the inspector asks for it: a failure they fixed on the spot
+    # should not leave a job behind for somebody to close.
+    job = raise_service(db, user, inspection, note=note) if raise_service_job else None
+    db.flush()
+    return inspection, job
 
 
 def finish_visit(db: Session, user: User, batch: InspectionBatch, *, notes: Optional[str] = None) -> InspectionBatch:

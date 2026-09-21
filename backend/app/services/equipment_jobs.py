@@ -183,7 +183,7 @@ def create(db: Session, user: User, *, facility_id: int, kind: str, equipment_id
            due_on: date | None, assigned_to_id: int | None, status: str, notes: str | None,
            inspection_result: str | None, findings: str | None,
            labour_cost: Decimal | None = None, parts_cost: Decimal | None = None,
-           is_major_work: bool = False) -> ServiceRequest:
+           is_major_work: bool = False, inspection_id: int | None = None) -> ServiceRequest:
     """Raise a job. Flushes; the caller commits."""
     work_order_type = kind_or_422(kind)
     if is_major_work and (kind != "service" or user.role == UserRole.TECHNICIAN):
@@ -219,6 +219,9 @@ def create(db: Session, user: User, *, facility_id: int, kind: str, equipment_id
         parts_cost=parts_cost,
         total_cost=_job_total(labour_cost, parts_cost),
         is_major_work=is_major_work,
+        # Set when an inspection found the fault, so the job says where it
+        # came from and a re-recorded inspection cannot raise a second one.
+        inspection_id=inspection_id,
         history=[_history("created", user, {"kind": kind, "equipment": asset.name})],
     )
     _stamp_status(job, _full_status(status, assignee is not None), now)
@@ -389,6 +392,11 @@ def serialise(job: ServiceRequest, category_codes: dict[int, str], *, today: dat
         "parts_cost": job.parts_cost,
         "total_cost": _job_total(job.labour_cost, job.parts_cost),
         "is_major_work": bool(job.is_major_work),
+        # Where the job came from: an inspection that found a fault, or a
+        # person reporting one.
+        "from_inspection": ({"id": job.inspection.id, "number": job.inspection.inspection_number,
+                             "visit_id": job.inspection.batch_id}
+                            if job.inspection_id and job.inspection else None),
         "created_at": job.created_at,
         "completed_at": job.completed_at,
         "equipment": {

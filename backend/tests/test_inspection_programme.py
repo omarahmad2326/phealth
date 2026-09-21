@@ -250,6 +250,7 @@ def test_recording_an_item_moves_its_clock_and_a_failure_comes_back():
                                  "answers": {"Lead aprons checked": "Pass"}}]),
         db=db, current_user=people["ali"])
     assert passed["item"]["result"] == "pass" and passed["visit"]["status"] == "in_progress"
+    assert passed["service"] is None, "a pass asks for no work"
     ct = db.get(Equipment, equipment["ct"]["id"])
     assert ct.last_pm_date == TODAY and ct.last_inspection_result == "pass"
     assert ct.next_generated_pm_date == programme.next_due(TODAY, "quarterly"), "a pass moves the clock on"
@@ -264,6 +265,41 @@ def test_recording_an_item_moves_its_clock_and_a_failure_comes_back():
     assert failed["visit"]["result"] == "fail", "a visit reads as its worst item"
     db.close()
     print("ok  a pass moves the clock on, a failure comes back at once and needs attention")
+
+
+def test_service_is_raised_only_when_the_inspector_asks_for_it():
+    db, site, _, people, departments, equipment, _ = build()
+    visit = api.create_visit(VisitIn(facility_id=site.id, scope="department",
+                                     department_id=departments["radiology"].id,
+                                     scheduled_on=TODAY + timedelta(days=7),
+                                     inspector_id=people["ali"].id), db=db, current_user=people["boss"])
+    items = {item["name"]: item for item in visit["item_list"]}
+    before = db.query(ServiceRequest).count()
+
+    # Fixed on the spot: a failure, and nothing left for anybody to close.
+    quiet = api.record_item(visit["id"], items["CT scanner GE-01"]["id"], RecordItemIn(
+        result="fail", note="Lamp replaced on the spot"), db=db, current_user=people["ali"])
+    assert quiet["service"] is None and db.query(ServiceRequest).count() == before
+
+    asked = api.record_item(visit["id"], items["X-ray XR-02"]["id"], RecordItemIn(
+        result="fail", note="Shutter jammed open", raise_service=True),
+        db=db, current_user=people["ali"])
+    assert asked["service"] is not None, asked
+    job = db.query(ServiceRequest).order_by(ServiceRequest.id.desc()).first()
+    assert db.query(ServiceRequest).count() == before + 1
+    assert job.problem_description == "Shutter jammed open"
+    assert job.equipment_id == equipment["xray"]["id"] and job.work_order_type == WorkOrderType.PREVENTIVE.value
+    assert job.inspection_id == items["X-ray XR-02"]["id"], "the job says which inspection found it"
+    assert asked["item"]["service"]["number"] == job.request_number
+
+    # Recording it again does not raise a second job for the same finding.
+    again = api.record_item(visit["id"], items["X-ray XR-02"]["id"], RecordItemIn(
+        result="red_tag", note="Shutter jammed open", raise_service=True),
+        db=db, current_user=people["ali"])
+    assert again["service"]["number"] == job.request_number
+    assert db.query(ServiceRequest).count() == before + 1
+    db.close()
+    print("ok  service is raised once, only when the inspector asks, and says which inspection found it")
 
 
 def test_a_red_tag_outlives_its_inspection_and_is_cleared_with_a_note():
@@ -350,18 +386,14 @@ def test_the_dashboard_counts_items_across_sites():
     print("ok  the dashboard counts items per site, worst first, with the site's size")
 
 
-def test_when_something_falls_due_the_work_is_raised_and_people_are_told():
+def test_falling_due_tells_people_and_creates_nothing():
     db, site, _, people, departments, equipment, _ = build()
     before = db.query(ServiceRequest).count()
     summary = inspection_due.run(db, facility_ids=[site.id], today=TODAY)
     db.commit()
 
-    assert summary["jobs_raised"] == 1, summary
-    job = db.query(ServiceRequest).order_by(ServiceRequest.id.desc()).first()
-    assert db.query(ServiceRequest).count() == before + 1
-    assert job.equipment_id == equipment["ct"]["id"] and job.work_order_type == WorkOrderType.PREVENTIVE.value
-    assert job.problem_description == "Filter change and calibration"
-    assert job.assigned_technician_id == people["ali"].id and job.due_on == TODAY - timedelta(days=1)
+    assert "jobs_raised" not in summary, "falling due raises nothing: the visit is the record"
+    assert db.query(ServiceRequest).count() == before, summary
 
     notices = db.query(Notification).filter(Notification.notification_type == "inspection").all()
     titles = {notice.title for notice in notices}
@@ -372,10 +404,10 @@ def test_when_something_falls_due_the_work_is_raised_and_people_are_told():
 
     again = inspection_due.run(db, facility_ids=[site.id], today=TODAY)
     db.commit()
-    assert again["jobs_raised"] == 0 and again["notified"] == 0, "running it twice raises nothing twice"
-    assert db.query(ServiceRequest).count() == before + 1
+    assert again["notified"] == 0, "running it twice does not tell people twice"
+    assert db.query(ServiceRequest).count() == before
     db.close()
-    print("ok  a due item raises its maintenance once and tells its people, a week ahead and on the day")
+    print("ok  a due item tells its people once, a week ahead and on the day, and creates nothing")
 
 
 def test_the_fleet_is_inspected_the_same_way():

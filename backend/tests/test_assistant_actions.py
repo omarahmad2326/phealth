@@ -187,18 +187,36 @@ def test_a_booking_assigns_the_technician():
     print("ok  a service booking creates the work order and assigns the technician")
 
 
-def test_an_inspection_plan_is_scheduled():
+def test_an_inspection_frequency_is_set():
+    """The one clock: how often an item is inspected, and when it is next due.
+
+    There are no maintenance plans any more, so this is what "every quarter"
+    means - the item's own frequency, which the visits are built from.
+    """
     db, where, people, things = build()
-    action = actions.propose(db, people["boss"], "prepare_inspection_plan", {
-        "asset_id": things["ahu"].id, "name": "Quarterly filter change", "interval_days": 90,
+    ahu = things["ahu"]
+    # Category equipment: the inspection programme covers what has a name.
+    ahu.name, ahu.equipment_type, ahu.building = "AHU 2", "Air handling unit", "Main block"
+    db.commit()
+
+    action = actions.propose(db, people["boss"], "prepare_inspection_schedule", {
+        "asset_id": ahu.id, "frequency": "quarterly", "pm_task": "Quarterly filter change",
     })
+    lines = {line["label"]: line["value"] for line in actions.card_of(action)["lines"]}
+    assert lines["Every"] == "Quarterly" and lines["Maintenance when due"] == "Quarterly filter change"
+    assert db.get(Equipment, ahu.id).pm_scheduling is None, "nothing is set until confirmed"
+
     done = actions.confirm(db, people["boss"], action.id)
     assert done.status == "executed", done.error
-    plan = db.query(MaintenanceSchedule).one()
-    assert plan.equipment_id == things["ahu"].id and plan.interval_days == 90
-    assert plan.next_due_date == (datetime.utcnow().date() + timedelta(days=90))
+    db.refresh(ahu)
+    assert ahu.pm_scheduling == "quarterly" and ahu.pm_task == "Quarterly filter change"
+    assert ahu.next_generated_pm_date is not None
+    assert db.query(MaintenanceSchedule).count() == 0, "no plan is created: the item is the schedule"
+
+    refused(lambda: actions.propose(db, people["boss"], "prepare_inspection_schedule", {
+        "asset_id": ahu.id, "frequency": "fortnightly"}), 422)
     db.close()
-    print("ok  an inspection plan is scheduled with its first due date")
+    print("ok  Phia sets an item's inspection frequency, and no maintenance plan is created")
 
 
 def test_a_work_order_update_follows_the_workflow():

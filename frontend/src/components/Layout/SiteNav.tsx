@@ -1,7 +1,11 @@
 /**
  * The site you are in and everything that belongs to it: Inspections
- * (departments, visits, fleet, red tags), Facility, Equipment Maintenance
- * (Service, Maintenance Plans, Permits to Work) and Compliance.
+ * (departments, visits, fleet, red tags), Service, Facility and Compliance
+ * (compliance and permits to work).
+ *
+ * Two words, one meaning each: an inspection is the schedule that keeps
+ * equipment to standard, and service is the work raised when something is at
+ * fault. Nothing here is a second way to do either.
  *
  * Always under the header once a site is open, so getting from a generator to
  * its service jobs is one click from anywhere rather than a trip through the
@@ -18,14 +22,15 @@ import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
+import HomeRepairServiceOutlinedIcon from '@mui/icons-material/HomeRepairServiceOutlined'
 import { fetchCategoryOverview } from '@/api/siteCategories'
 import { hasPermission } from '@/config/permissions'
-import { CATEGORIES, CATEGORIES_LABEL, EQUIPMENT_MAINTENANCE } from '@/config/siteCategories'
+import { CATEGORIES, CATEGORIES_LABEL, COMPLIANCE_LINKS, SERVICE_LINK } from '@/config/siteCategories'
 import { useActiveFacility, useFacilityStore } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 
-type MenuName = 'inspections' | 'categories' | 'maintenance'
+type MenuName = 'inspections' | 'categories' | 'compliance'
 
 // The inspection screens, in the order somebody works through them.
 const INSPECTION_LINKS = [
@@ -48,13 +53,13 @@ export default function SiteNav() {
   const [anchor, setAnchor] = useState<{ name: MenuName; el: HTMLElement } | null>(null)
 
   const showCategories = hasPermission(user, 'facility-inventory', 'index')
-  const maintenanceLinks = EQUIPMENT_MAINTENANCE.filter((link) => hasPermission(user, link.module, 'index'))
-  const showMaintenance = maintenanceLinks.length > 0
-  const showCompliance = hasPermission(user, 'compliance', 'index')
+  const showService = hasPermission(user, SERVICE_LINK.module, 'index')
+  const complianceLinks = COMPLIANCE_LINKS.filter((link) => hasPermission(user, link.module, 'index'))
+  const showCompliance = complianceLinks.length > 0
   const showInspections = hasPermission(user, 'inspections', 'index')
   const inInspections = ['/departments', '/inspection-visits', '/fleet', '/red-tags']
     .some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
-  const inMaintenance = ['/equipment-maintenance', '/maintenance', '/permits']
+  const inCompliance = ['/compliance', '/permits']
     .some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 
   const { data: overview } = useQuery({
@@ -66,7 +71,7 @@ export default function SiteNav() {
 
   // Choosing a site is the Sites page's job; there is no site to navigate yet.
   if (storedSite == null || pathname === '/sites' || !facility) return null
-  if (!showCategories && !showMaintenance && !showCompliance && !showInspections) return null
+  if (!showCategories && !showService && !showCompliance && !showInspections) return null
 
   const counts = Object.fromEntries((overview?.categories ?? []).map((c) => [c.code, c]))
   const go = (path: string) => { setAnchor(null); navigate(path) }
@@ -123,20 +128,20 @@ export default function SiteNav() {
           {CATEGORIES_LABEL}
         </Button>
       )}
-      {showMaintenance && (
+      {showService && (
         <Button
-          endIcon={<KeyboardArrowDownRoundedIcon />}
-          aria-haspopup="menu" aria-expanded={anchor?.name === 'maintenance'}
-          onClick={(e) => setAnchor({ name: 'maintenance', el: e.currentTarget })}
-          sx={tabSx(inMaintenance)}
+          startIcon={<HomeRepairServiceOutlinedIcon />} onClick={() => go(SERVICE_LINK.path)}
+          sx={tabSx(pathname.startsWith('/service') || pathname.startsWith('/equipment-maintenance'))}
         >
-          Equipment Maintenance
+          Service
         </Button>
       )}
       {showCompliance && (
         <Button
-          startIcon={<FactCheckOutlinedIcon />} onClick={() => go('/compliance')}
-          sx={tabSx(pathname.startsWith('/compliance'))}
+          endIcon={<KeyboardArrowDownRoundedIcon />}
+          aria-haspopup="menu" aria-expanded={anchor?.name === 'compliance'}
+          onClick={(e) => setAnchor({ name: 'compliance', el: e.currentTarget })}
+          sx={tabSx(inCompliance)}
         >
           Compliance
         </Button>
@@ -182,10 +187,10 @@ export default function SiteNav() {
         })}
       </Menu>
       <Menu
-        anchorEl={anchor?.el} open={anchor?.name === 'maintenance'} onClose={() => setAnchor(null)}
+        anchorEl={anchor?.el} open={anchor?.name === 'compliance'} onClose={() => setAnchor(null)}
         PaperProps={{ sx: { borderRadius: '14px', minWidth: 220, mt: 0.5 } }}
       >
-        {maintenanceLinks.map((link) => (
+        {complianceLinks.map((link) => (
           <MenuItem key={link.path} selected={pathname.startsWith(link.path)} onClick={() => go(link.path)} sx={{ py: 1 }}>
             <ListItemIcon sx={{ color: palette.brand }}>{link.icon}</ListItemIcon>
             <ListItemText primary={link.name} secondary={link.description}

@@ -35,9 +35,10 @@ const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
 
 const COLUMNS = 'minmax(0, 2fr) minmax(0, 2.2fr) 120px 140px 190px'
 
-export default function EquipmentMaintenancePage() {
+export default function ServicePage() {
+  // /service has no kind in the path: service is the only kind there is.
   const { kind } = useParams()
-  const meta = JOB_KINDS.find((k) => k.kind === kind)
+  const meta = JOB_KINDS.find((k) => k.kind === (kind ?? 'service')) ?? JOB_KINDS[0]
   if (!meta) return <Navigate to={JOB_KINDS[0].path} replace />
   return <JobList key={meta.kind} kind={meta.kind} />
 }
@@ -88,7 +89,7 @@ function JobList({ kind }: { kind: JobKind }) {
       >
         <Box sx={{ minWidth: 0 }}>
           <Typography sx={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.5, textTransform: 'uppercase', color: palette.textSubtle }}>
-            Equipment Maintenance · {facility?.name ?? 'This site'}
+            Service · {facility?.name ?? 'This site'}
           </Typography>
           {JOB_KINDS.length > 1 && (
           <ToggleButtonGroup
@@ -258,6 +259,12 @@ function StatusChips({ job, style, sx }: { job: EquipmentJob; style: { color: st
       {job.is_major_work && (
         <Chip size="small" label="Major work"
               sx={{ height: 22, fontSize: 11, fontWeight: 800, bgcolor: palette.violetTint, color: palette.violet }} />
+      )}
+      {/* Service is raised by a problem, so every job says which kind. */}
+      {job.from_inspection && (
+        <Chip size="small" label={`From inspection ${job.from_inspection.number}`}
+              sx={{ height: 22, fontSize: 11, fontWeight: 800, bgcolor: palette.brandTint,
+                    color: palette.brandDeep }} />
       )}
       {job.inspection_result && (
         <Chip size="small" label={job.inspection_result === 'pass' ? 'Pass' : 'Fail'}

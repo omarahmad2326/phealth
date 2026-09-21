@@ -3,8 +3,8 @@
 The changes a person makes on the everyday screens: add equipment to a
 category or change its details (including what one item cost), raise a service
 or inspection job or update one (status, result, labour and parts cost), report
-a fault, book an asset for service, schedule an inspection plan, and update a
-work order. Each touches one record, which the product can change back.
+a fault, book an asset for service, set how often something is inspected, and
+update a work order. Each touches one record, which the product can change back.
 Deleting, bulk changes, ledger entries and anything about users or permissions
 stay on their own screens, with their own previews; so does marking a job as
 major work, which posts to the ledger.
@@ -299,55 +299,69 @@ def _execute_booking(db: Session, user: User, payload: dict[str, Any]) -> dict[s
     return result
 
 
-# ── schedule an inspection ───────────────────────────────────────────────────
+# ── put an item on its inspection clock ──────────────────────────────────────
 
-def _prepare_plan(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
-    asset = _asset(ctx, args.get("asset_id"))
-    name = (args.get("name") or "").strip()
-    if len(name) < 3:
-        raise ToolInputError("Give the plan a name, e.g. 'Quarterly filter change'.")
-    interval = args.get("interval_days")
-    if not isinstance(interval, int) or not 1 <= interval <= 3650:
-        raise ToolInputError("interval_days must be a whole number of days between 1 and 3650.")
-    priority = _priority(args.get("priority")) or "medium"
-    technician = _technician(ctx, args.get("assigned_technician_id"))
-    first_due = args.get("first_due_date")
-    if first_due:
-        try:
-            first_due_date = date.fromisoformat(str(first_due))
-        except ValueError:
-            raise ToolInputError("first_due_date must be YYYY-MM-DD.")
-    else:
-        # The server's day, as everywhere else, not the machine's local one.
-        first_due_date = utc_today() + timedelta(days=interval)
-    task = (args.get("task_description") or "").strip()[:2000] or None
+def _prepare_schedule(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
+    from app.models.department import Department
+    from app.services import inspection_programme as programme
+    from app.services import site_categories
+
+    asset = _category_item(ctx, args.get("asset_id"))
+    frequency, interval = programme.frequency_or_422(args.get("frequency"), args.get("interval_days"))
+    if frequency is None:
+        raise ToolInputError("Say how often it is inspected: {}.".format(", ".join(programme.FREQUENCIES)))
+    first_due = _date_arg(args["first_due_on"], "first_due_on") if args.get("first_due_on") else None
+    if first_due is None:
+        first_due = programme.next_due(asset.last_pm_date or utc_today(), frequency, interval)
+    task = (args.get("pm_task") or "").strip()[:500] or None
+    person = None
+    if args.get("assigned_to_id"):
+        from app.services import equipment_jobs
+
+        person = next((u for u in equipment_jobs.assignable_users(ctx.db, asset.facility_id)
+                       if u.id == args["assigned_to_id"]), None)
+        if person is None:
+            raise ToolInputError("That person cannot be given work at this site. Find someone with search_users.")
+
+    department = ctx.db.get(Department, asset.department_id) if asset.department_id else None
+    warnings: list[str] = []
+    if department is None:
+        warnings.append("It is not in a department yet, so it will not be part of any visit until it is.")
+    was = programme.schedule_of(asset)
+    if was["frequency"]:
+        warnings.append("It is currently inspected {} ({}).".format(
+            was["frequency_label"].lower(), was["next_due_on"] or "no date"))
+
     return Prepared(
-        payload={"asset_id": asset.id, "name": name[:255], "task_description": task,
-                 "interval_days": interval, "priority": priority,
-                 "assigned_technician_id": technician.id if technician else None,
-                 "first_due_date": first_due_date.isoformat()},
-        title="Schedule an inspection plan",
-        lines=[("Asset", asset.asset_tag), ("Plan", name), ("Every", "{} days".format(interval)),
-               ("First due", first_due_date.isoformat()), ("What the technician does", task or "Not described"),
-               ("Priority", priority), ("Usually done by", technician.full_name if technician else "Not set")],
+        payload={"asset_id": asset.id, "frequency": frequency, "interval_days": interval,
+                 "first_due_on": first_due.isoformat() if first_due else None,
+                 "pm_task": task, "assigned_to_id": person.id if person else None},
+        title="Inspect {} {}".format(asset.name, programme.FREQUENCIES[frequency].lower()),
+        lines=[("Equipment", "{} · {}".format(asset.name, asset.asset_tag)),
+               ("Department", department.name if department else "Not in a department"),
+               ("Where", site_categories.location_label(asset) or "Not recorded"),
+               ("Every", programme.FREQUENCIES[frequency] + (" ({} days)".format(interval) if interval else "")),
+               ("Next due", first_due.isoformat() if first_due else "Not set"),
+               ("Maintenance when due", task or "Not described"),
+               ("Assigned to", person.full_name if person else "Nobody")],
         facility_id=asset.facility_id,
-        warnings=[],
+        warnings=warnings,
     )
 
 
-def _execute_plan(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
-    from app.api.v1.endpoints.maintenance import ScheduleCreate, create_schedule
+def _execute_schedule(db: Session, user: User, payload: dict[str, Any]) -> dict[str, Any]:
+    from app.api.v1.endpoints.inspection_programme import set_item_schedule
+    from app.schemas.inspection_programme import ItemScheduleIn
 
-    asset = db.get(Equipment, payload["asset_id"])
-    plan = create_schedule(ScheduleCreate(
-        facility_id=asset.facility_id, equipment_id=asset.id, name=payload["name"],
-        task_description=payload.get("task_description"), discipline_id=asset.discipline_id,
-        interval_days=payload["interval_days"], priority=payload["priority"],
-        assigned_technician_id=payload.get("assigned_technician_id"),
-        next_due_date=date.fromisoformat(payload["first_due_date"]),
+    item = set_item_schedule(payload["asset_id"], ItemScheduleIn(
+        frequency=payload["frequency"], interval_days=payload.get("interval_days"),
+        first_due_on=date.fromisoformat(payload["first_due_on"]) if payload.get("first_due_on") else None,
+        pm_task=payload.get("pm_task"), pm_assignee_id=payload.get("assigned_to_id"),
     ), db=db, current_user=user)
-    return {"message": "Plan '{}' scheduled; first due {}.".format(plan.name, payload["first_due_date"]),
-            "record": plan.name, "route": "/assets?asset={}".format(asset.id)}
+    return {"message": "{} is now inspected {} · next due {}.".format(
+                item["name"], item["frequency_label"].lower(), item["next_due_on"] or "not set"),
+            "record": item["name"], "route": "/departments", "equipment_id": item["id"],
+            "facility_id": db.get(Equipment, payload["asset_id"]).facility_id}
 
 
 # ── update a work order ──────────────────────────────────────────────────────
@@ -888,22 +902,26 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
         prepare=_prepare_booking, execute=_execute_booking,
     ),
     ActionDefinition(
-        name="prepare_inspection_plan",
-        module="maintenance", permission="add",
+        name="prepare_inspection_schedule",
+        module="facility-inventory", permission="edit",
         description=(
-            "Prepare a recurring inspection or maintenance plan on an asset, every N "
-            "days. Nothing happens until confirmed."
+            "Prepare how often a piece of equipment is inspected: quarterly, every 6 months, "
+            "annually, monthly, or a custom number of days. Its next date is worked out from the "
+            "frequency unless one is given. Optionally the maintenance to do when it falls due and "
+            "who it is assigned to. This is the only schedule there is - there are no separate "
+            "maintenance plans. Nothing happens until confirmed."
         ),
         parameters={"type": "object", "properties": {
             "asset_id": {"type": "integer"},
-            "name": {"type": "string", "description": "e.g. 'Quarterly filter change'."},
-            "task_description": {"type": "string"},
-            "interval_days": {"type": "integer", "minimum": 1, "maximum": 3650},
-            "first_due_date": {"type": "string", "format": "date"},
-            "priority": {"type": "string", "enum": PRIORITIES},
-            "assigned_technician_id": {"type": "integer"},
-        }, "required": ["asset_id", "name", "interval_days"]},
-        prepare=_prepare_plan, execute=_execute_plan,
+            "frequency": {"type": "string",
+                          "enum": ["monthly", "quarterly", "semi_annual", "annual", "custom"]},
+            "interval_days": {"type": "integer", "minimum": 1, "maximum": 3650,
+                              "description": "Only for a custom frequency."},
+            "first_due_on": {"type": "string", "format": "date"},
+            "pm_task": {"type": "string", "description": "e.g. 'Quarterly filter change'."},
+            "assigned_to_id": {"type": "integer"},
+        }, "required": ["asset_id", "frequency"]},
+        prepare=_prepare_schedule, execute=_execute_schedule,
     ),
     ActionDefinition(
         name="prepare_work_order_update",

@@ -306,7 +306,9 @@ categories migration. Their presence confirms the migration chain reached the
 end. The Categories screens also create the four category disciplines on first
 use if a database has none.
 
-The inspection programme's own tables arrive with migration `d7f1a3b5c9e2`:
+The inspection programme's own tables arrive with migration `d7f1a3b5c9e2`,
+and `e8a2b4c6d0f3` then folds the maintenance plans into the item clocks and
+links service to the inspection that found the fault:
 
 ```bash
 docker compose exec postgres psql -U phealth -d phealth_db -c   "select table_name from information_schema.tables
@@ -315,8 +317,18 @@ docker compose exec postgres psql -U phealth -d phealth_db -c   "select table_na
 
 Three rows means the inspection migration ran. It also adds the department and
 the inspection clock to `equipment`, size to `facilities`, and `RED_TAG` to the
-`inspectionresult` enum. See [inspections.md](inspections.md) for how the
-programme works and what to set up after deploying.
+`inspectionresult` enum.
+
+```bash
+docker compose exec postgres psql -U phealth -d phealth_db -c \
+  "select status, count(*) from maintenance_schedules group by status;"
+```
+
+After `e8a2b4c6d0f3`, plans on equipment that is in the inspection programme
+are `retired` and their interval now lives on the item. Plans on other assets
+stay `active` and keep generating work orders. See
+[inspections.md](inspections.md) for how the programme works and what to set up
+after deploying.
 
 ---
 

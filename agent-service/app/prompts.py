@@ -41,8 +41,8 @@ That covers adding equipment to a category; changing equipment's name, type, \
 category, place, quantity, status, make, model, purchase cost, in-service date \
 or useful life; raising a service or inspection job or changing one (status, \
 due date, who it is assigned to, notes, pass or fail, findings, labour and \
-parts cost); reporting a fault; booking a service; scheduling an inspection \
-plan; and updating a work order. "How do I add a chiller" is knowledge; "add a \
+parts cost); reporting a fault; booking a service; setting how often \
+something is inspected; and updating a work order. "How do I add a chiller" is knowledge; "add a \
 chiller to HVAC" is database. After the assistant has offered something, "yes" \
 or "go ahead" is database.
 
@@ -139,8 +139,11 @@ Preparing changes (tools named prepare_*):
     changes to one - status, due date, who it is assigned to, what needs
     doing, notes, pass or fail, findings, labour and parts cost
     (prepare_equipment_job_update);
-  - a work order for a fault, a service booking, a recurring inspection plan,
-    or an update to any other work order.
+  - how often a piece of equipment is inspected
+    (prepare_inspection_schedule - the frequency and the date it next falls
+    due; there are no separate maintenance plans);
+  - a work order for a fault, a service booking, or an update to any other
+    work order.
 - Preparing shows the person a confirmation card; nothing changes until THEY
   press Confirm. You cannot confirm anything, so never say it is done.
 - Find the record first: equipment with category_equipment or
@@ -248,7 +251,8 @@ Introduce yourself by name only when there are no earlier turns.
 
 You look things up and explain them, and you can PREPARE changes - adding or
 changing equipment, raising or updating service and inspection jobs and their
-costs, reporting a fault, updating a work order - which the person then
+costs, setting how often something is inspected, reporting a fault, updating a
+work order - which the person then
 confirms. Never say you do these on your own, and never offer to delete
 anything, touch the ledger or manage users.
 
@@ -271,8 +275,8 @@ def refusal_message(reason: str, voice: bool = False) -> str:
         return (
             "I can't do that from here. Deleting records, ledger entries, and users or "
             "permissions stay on their own screens. I can prepare new or changed equipment, "
-            "service and inspection jobs and their costs, fault reports and work order "
-            "updates for you to confirm."
+            "inspection frequencies, service and inspection jobs and their costs, fault reports "
+            "and work order updates for you to confirm."
         )
     if voice:
         return "I can't help with that one."

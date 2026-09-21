@@ -191,26 +191,37 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
     from app.assistant.kb import generator
 
     guides = {doc.doc_id: doc for doc in guide_documents()}
-    assert set(guides) == {"guide.site_categories", "guide.equipment_maintenance"}
+    assert set(guides) == {"guide.site_categories", "guide.inspections", "guide.service"}
     for words in ("Add equipment", "Where is it?", "Building", "Room / exact spot", "Out of service",
                   "Open Facility and choose", "Cost & value", "In service since", "Useful life", "Book value today",
-                  "View asset & value history", "Add to a category", "$38,250"):
+                  "View asset & value history", "Add to a category", "$38,250", "Inspections and PM"):
         assert words in guides["guide.site_categories"].body, words
-    for words in ("New service", "Raise service", "Pass or Fail", "Overdue", "Labour", "Parts",
-                  "Major work that extends its life", "Maintenance Plans", "Permits to Work"):
-        assert words in guides["guide.equipment_maintenance"].body, words
+    # An inspection is the schedule; service is the fault. The guides must not
+    # blur the two, or Phia will explain a product that no longer exists.
+    for words in ("Add department", "Assign items", "Attach a form", "Schedule inspection", "Schedule visit",
+                  "Raise a service job for this", "Finish visit", "Red tag", "Fleet", "Overdue"):
+        assert words in guides["guide.inspections"].body, words
+    assert "maintenance plan" in guides["guide.inspections"].body.lower()
+    for words in ("New service", "Raise service", "What needs doing", "Labour", "Parts",
+                  "Major work that extends its life", "From inspection"):
+        assert words in guides["guide.service"].body, words
+    assert "Maintenance Plans" not in guides["guide.service"].body, "that screen is gone"
     source = pathlib.Path(generator.__file__).read_text(encoding="utf-8")
     assert "documents.extend(guide_documents())" in source
 
     # The labels quoted in the guides are the labels on the screens.
     pages = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
     if pages.is_dir():
-        screens = "".join(p.read_text(encoding="utf-8") for p in
-                          list((pages / "Categories").glob("*.tsx")) + list((pages / "EquipmentMaintenance").glob("*.tsx")))
+        screens = "".join(page.read_text(encoding="utf-8") for folder in
+                          ("Categories", "Service", "Departments", "InspectionVisits", "Fleet", "RedTags",
+                           "Inspections/programme")
+                          for page in (pages / folder).glob("*.tsx"))
         for label in ("Add equipment", "Where is it?", "Room / exact spot", "What needs doing", "Assigned to",
-                      "Findings", "Yes, remove it", "Cost & value", "In service since", "Useful life",
-                      "Book value today", "View asset & value history", "Add to a category", "Labour", "Parts",
-                      "Major work that extends its life"):
+                      "Cost & value", "In service since", "Useful life", "Book value today",
+                      "View asset & value history", "Add to a category", "Labour", "Parts",
+                      "Major work that extends its life", "Inspections and PM", "Add department", "Assign items",
+                      "Attach a form", "Schedule inspection", "Schedule visit", "Finish visit",
+                      "Raise a service job for this", "Clear red tag", "Add vehicle"):
             assert label in screens, label
     print("ok  the guides use the screens' own words and are part of the knowledge base")
 

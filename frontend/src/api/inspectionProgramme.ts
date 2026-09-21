@@ -113,6 +113,8 @@ export interface VisitItem {
   note?: string | null
   completed_at?: string | null
   forms: FormLink[]
+  /** The service job this finding raised, when the inspector asked for one. */
+  service?: { id: number; number: string; status: string } | null
 }
 
 export interface Visit {
@@ -272,8 +274,12 @@ export const fetchVisit = async (id: number): Promise<Visit> =>
 export const recordVisitItem = async (
   visitId: number,
   inspectionId: number,
-  body: { result: Result; answers?: Array<Record<string, unknown>>; note?: string | null },
-): Promise<{ item: VisitItem; visit: Visit }> =>
+  body: {
+    result: Result; answers?: Array<Record<string, unknown>>; note?: string | null
+    /** Ask for the work: raises one service job, titled from the note. */
+    raise_service?: boolean
+  },
+): Promise<{ item: VisitItem; visit: Visit; service?: { id: number; number: string } | null }> =>
   (await apiClient.post(`${base}/visits/${visitId}/items/${inspectionId}`, body)).data
 
 export const finishVisit = async (id: number, notes?: string | null): Promise<Visit> =>

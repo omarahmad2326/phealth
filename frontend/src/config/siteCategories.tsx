@@ -51,7 +51,7 @@ export interface JobKindMeta {
 // Inspecting moved to the inspection programme - departments, forms, visits
 // and red tags - so Equipment Maintenance keeps only the work it raises.
 export const JOB_KINDS: JobKindMeta[] = [
-  { kind: 'service', name: 'Service', singular: 'service', icon: <HomeRepairServiceIcon />, path: '/equipment-maintenance/service' },
+  { kind: 'service', name: 'Service', singular: 'service', icon: <HomeRepairServiceIcon />, path: '/service' },
 ]
 
 export interface MaintenanceLink {
@@ -63,12 +63,21 @@ export interface MaintenanceLink {
   module: Module
 }
 
-/** Everything in Equipment Maintenance, in the order it is shown. */
-export const EQUIPMENT_MAINTENANCE: MaintenanceLink[] = [
-  { name: 'Service', description: 'Service jobs on equipment', icon: <HomeRepairServiceIcon />,
-    path: '/equipment-maintenance/service', module: 'service-requests' },
-  { name: 'Maintenance Plans', description: 'Recurring calendar and runtime work', icon: <EventRepeatIcon />,
-    path: '/maintenance', module: 'maintenance' },
+/**
+ * Service: the work raised when something is at fault or malfunctioning,
+ * either by an inspection that found it or by somebody reporting it. What is
+ * scheduled lives in Inspections, and each item carries its own frequency, so
+ * there is no second recurring list here.
+ */
+export const SERVICE_LINK: MaintenanceLink = {
+  name: 'Service', description: 'Faults and malfunctions, assigned and costed',
+  icon: <HomeRepairServiceIcon />, path: '/service', module: 'service-requests',
+}
+
+/** Regulatory work, which answers to somebody outside the hospital. */
+export const COMPLIANCE_LINKS: MaintenanceLink[] = [
+  { name: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />,
+    path: '/compliance', module: 'compliance' },
   { name: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />,
     path: '/permits', module: 'permits' },
 ]

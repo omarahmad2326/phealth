@@ -29,6 +29,8 @@ import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
 import EventAvailableIcon from '@mui/icons-material/EventAvailable'
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
+import HomeRepairServiceIcon from '@mui/icons-material/HomeRepairService'
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { getVisibleModules, type Module } from '@/config/permissions'
@@ -38,7 +40,7 @@ import { palette } from '@/theme/palette'
 // building, the work done to it, the things in it — rather than the way a
 // contractor managing many client sites did.
 type ModuleGroup =
-  | 'Overview' | 'Inspections'
+  | 'Overview' | 'Inspections' | 'Service'
   | 'Assets' | 'Compliance' | 'People' | 'Commerce' | 'Workspace'
 
 /**
@@ -63,7 +65,7 @@ interface SidebarItem {
 }
 
 const groupOrder: ModuleGroup[] = [
-  'Overview', 'Inspections', 'Assets',
+  'Overview', 'Inspections', 'Service', 'Assets',
   'Compliance', 'People', 'Commerce', 'Workspace',
 ]
 
@@ -77,6 +79,9 @@ const allMenuItems: SidebarItem[] = [
   { text: 'Fleet', description: "This site's vehicles and their inspections", icon: <LocalShippingIcon />, path: '/fleet', module: 'inspections', group: 'Inspections' },
   { text: 'Red tags', description: 'What is not up to standard, and what was done', icon: <ReportProblemOutlinedIcon />, path: '/red-tags', module: 'inspections', group: 'Inspections' },
   { text: 'Inspection forms', description: 'Build the checklists departments are inspected on', icon: <DescriptionOutlinedIcon />, path: '/inspections', module: 'inspections', group: 'Inspections' },
+  // Service is its own thing: work raised because something is at fault.
+  { text: 'Service', description: 'Faults and malfunctions, assigned and costed', icon: <HomeRepairServiceIcon />, path: '/service', module: 'service-requests', group: 'Service' },
+  { text: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />, path: '/permits', module: 'permits', group: 'Compliance' },
   { text: 'Contractors', description: 'Contractors, contracts, and credentials', icon: <HandshakeIcon />, path: '/vendors', module: 'vendors', group: 'Compliance' },
   { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Compliance' },
   { text: 'Asset Register', description: 'Every machine, its plan, history and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory', group: 'Assets' },

@@ -1,27 +1,31 @@
 """Written guides for screens the generated how-to documents cannot describe well.
 
 The how-to extractor reads navigation and button labels out of the frontend
-source. The Facility and Equipment Maintenance screens are reached
-from a site bar and built from lists, so the extractor sees little of them;
-these guides say, in the words on the screen, how they are used.
+source. Facility, Inspections and Service are reached from a site bar and built
+from lists, so the extractor sees little of them; these guides say, in the
+words on the screen, how they are used.
 
-Keep them in step with pages/Categories and pages/EquipmentMaintenance.
+Two words matter here and they are not interchangeable: an **inspection** is
+the schedule that keeps equipment to standard, and **service** is the work
+raised when something is at fault. Keep these guides in step with
+pages/Categories, pages/Departments, pages/InspectionVisits, pages/Fleet,
+pages/RedTags and pages/Service.
 """
 from __future__ import annotations
 
 from app.assistant.kb.documents import KBDocument
 
-_SOURCE = "written guide: facility categories and equipment maintenance"
+_SOURCE = "written guide: facility equipment, inspections and service"
 
 _GUIDES: tuple[tuple[str, str, str, str], ...] = (
     (
         "guide.site_categories",
         "facility-inventory",
-        "How to add equipment under Facility, with where it is and what it cost",
-        """Under Facility, every site files its equipment in four categories: Electrical, Plumbing, Mechanical and HVAC.
+        "How to add equipment under Facility, with where it is, what it cost, and how often it is inspected",
+        """Under Facility, every site files its equipment in categories: Electrical, Plumbing, Mechanical, HVAC, Building, Landscaping and Parking.
 
 ## Where to find it
-Open the site from Sites. The bar under the page title shows the site's name, Facility, Equipment Maintenance and Compliance. Open Facility and choose Electrical, Plumbing, Mechanical or HVAC. The site's own page also shows a tile for each category with how many items it has, their total book value and how many need attention. The Back arrow left of the page title returns to the previous screen.
+Open the site from Sites. The bar under the page title shows the site's name, Inspections, Service, Facility and Compliance. Open Facility and choose a category. The site's own page also shows a tile for each category with how many items it has, their total book value and how many need attention. The Back arrow left of the page title returns to the previous screen.
 
 ## Add equipment
 1. Open the category, for example Facility > Electrical.
@@ -29,53 +33,92 @@ Open the site from Sites. The bar under the page title shows the site's name, Fa
 3. Fill in Name (for example Generator 1) and Type. Type offers a list for the category - Generator, Transformer, Main switchboard, Distribution board, UPS, Transfer switch, Lighting, Earthing for Electrical - and you can type your own.
 4. Under Where is it?, fill in Building (required), Floor and Room / exact spot, for example Main block, Basement, Plant room 2 north wall. Places already used at the site are suggested as you type.
 5. Set Quantity and Status: Working, Needs attention or Out of service. Make and Model are optional.
-6. Under Cost & value, enter the Purchase cost (the Cost of one item when the quantity is more than one - the total is worked out), In service since, and Useful life. Useful life is filled in from the category: 20 years for Electrical, Plumbing and Mechanical, 15 years for HVAC.
+6. Under Cost & value, enter the Purchase cost (the Cost of one item when the quantity is more than one - the total is worked out), In service since, and Useful life. Useful life is filled in from the category.
 7. The form shows the Book value today and how much it Depreciates a year as you type.
-8. Press Add equipment. It is given the site's next asset tag automatically.
+8. Under Inspections and PM, choose the Department that answers for it - Radiology, Theatre, Pharmacy - and how often it is inspected: Monthly, Quarterly, Every 6 months, Annually, or Custom with its own number of days. The frequency is filled in from the department, and First due is worked out from the frequency unless you give a date. Maintenance raised when it falls due and Assigned to are optional.
+9. Press Add equipment. It is given the site's next asset tag automatically.
+
+An item keeps its category and its department at the same time: a chiller is HVAC work and Radiology's problem. It shows in the category list, in its department, and in the Asset Register.
 
 ## How value and depreciation work
 Book value is straight-line depreciation from the in-service date over the useful life, the same calculation as Assets & Value. With a cost of $45,000 and a 20-year life it depreciates $2,250 a year and is worth $38,250 after three years. Equipment without a cost or an in-service date shows no book value.
-Routine service and inspection costs are maintenance spend: they do not change the book value. A service marked Major work that extends its life adds its cost to the value, which then depreciates over the remaining life. Cost of ownership is the purchase cost plus major work plus maintenance spend. When maintenance spend reaches 50% of the purchase cost, the equipment shows a warning to consider replacing it.
+Routine service costs are maintenance spend: they do not change the book value. A service marked Major work that extends its life adds its cost to the value, which then depreciates over the remaining life. Cost of ownership is the purchase cost plus major work plus maintenance spend. When maintenance spend reaches 50% of the purchase cost, the equipment shows a warning to consider replacing it.
 
 ## Change or remove equipment
-Click the row to open it, change anything and press Save. When editing, the form also shows Maintenance spend and Cost of ownership, and View asset & value history opens the same record in the Asset Register. Category can be changed to move equipment put in the wrong category. Remove deletes equipment entered by mistake; equipment that already has service or inspection jobs cannot be removed - set its Status to Out of service instead.
+Click the row to open it, change anything and press Save. When editing, the form also shows Maintenance spend and Cost of ownership, and View asset & value history opens the same record in the Asset Register. Category can be changed to move equipment put in the wrong category. Remove deletes equipment entered by mistake; equipment that already has jobs cannot be removed - set its Status to Out of service instead.
 
 ## Find equipment
 Each category list can be searched by name, type, tag or place, and filtered by Building, Floor and Status. The list shows where each item is, how many there are, its status, its Book value, when its next service is due and how many jobs are open on it.
 
 ## Assets already in the Asset Register
-Equipment under Facility is the same record as in the Asset Register, which shows it by name, category and place. An older asset that is not in a category has an Add to a category button in the Asset Register: choose the category, give it a name and type, and say where it is. It keeps its tag, cost and history.
-
-## Categories used
-- Electrical: generators, transformers, switchboards, distribution boards, UPS, transfer switches, lighting, earthing.
-- Plumbing: water tanks, water pumps, water heaters, RO and filtration plants, drainage and sewage, taps and sanitary fittings.
-- Mechanical: lifts, boilers, air compressors, vacuum pumps, medical gas manifolds, fire pumps.
-- HVAC: chillers, air handling units, fan coil units, split and package AC, cooling towers, exhaust fans.""",
+Equipment under Facility is the same record as in the Asset Register, which shows it by name, category and place. An older asset that is not in a category has an Add to a category button in the Asset Register: choose the category, give it a name and type, and say where it is. It keeps its tag, cost and history.""",
     ),
     (
-        "guide.equipment_maintenance",
-        "service-requests",
-        "How to raise and update a service or inspection job on equipment, and record its cost",
-        """Equipment Maintenance holds Service, Inspection, Maintenance Plans and Permits to Work for a site. Service and inspection jobs are work orders on the site's Facility equipment.
+        "guide.inspections",
+        "inspections",
+        "How inspections work: departments, forms, what is due, visits, red tags and the fleet",
+        """An inspection is the schedule that keeps equipment up to standard. Every inspectable item - a piece of equipment in a department, or a vehicle in the fleet - carries one frequency, and from that comes the date it next falls due. There are no separate maintenance plans: the item is the schedule.
 
 ## Where to find it
-Open the site, then Equipment Maintenance in the bar under the page title, and choose Service, Inspection, Maintenance Plans or Permits to Work. The site's page shows how many services and inspections are open, overdue and failed, how many maintenance plans are overdue or due in 30 days, and how many permits are in force or awaiting approval.
+Open the site, then Inspections in the bar under the page title, and choose Departments, Visits, Fleet or Red tags. Inspection forms are built under Inspections > Inspection forms. The dashboard shows, for every site, how many items have Passed, Failed, been Red tagged, are In progress, Due or Overdue; choosing a site opens it.
 
-## Raise a job
-1. Open Equipment Maintenance > Service (or Inspection).
-2. Press New service (or New inspection).
-3. Choose the Category, then the Equipment in it. Where the equipment is shows underneath.
-4. Fill in What needs doing, the Due date and who it is Assigned to. The person assigned is notified.
-5. Leave Status as Open, or set In progress or Done.
-6. Press Raise service (or Raise inspection).
+## Departments
+Departments are the parts of a site: Radiology, Theatre, Pharmacy. Open Inspections > Departments to see each one with how many items it holds, how many are due or overdue, and how many are red-tagged. Press Add department to add one.
+Items that nobody has put in a department are shown at the bottom with an Assign items button: tick many at once, choose the department, choose how often they are inspected and press Assign. This is how an existing site is set up without typing a frequency on every item.
+
+## The forms a department is inspected on
+Open a department and press Attach a form under Inspected on. Choose a form from the library and say how often it is normally done there - that is what prefills the frequency when equipment is added to the department. Nothing in a department can be inspected until at least one form is attached.
+
+## What "due" means
+- Passed moves the next date on by the item's frequency.
+- Failed or Red tag makes it due again at once: the point of both is that somebody comes back.
+- Due means within 30 days; Overdue means the date has gone by.
+Nothing is created when an item falls due. The people who have to act - the person it is assigned to, admins and Super Admins - are notified seven days before and on the day, and the item turns up in the next visit.
+
+## Schedule a visit
+1. Open Inspections > Visits and press Schedule inspection, or press Schedule inspection on a department or on the Fleet.
+2. Choose what is being inspected: One department, The whole site, or The fleet.
+3. Choose the Date and the Inspector. Before anything is created the dialog says how many items would be due by that date, and names a few.
+4. Press Schedule visit. The visit holds the items due by then; anything overdue stays in until it is done.
+
+## Fill in a visit
+The visit lists its items. Open one, answer the department's forms - each question is Pass, Fail or N/A, or a value to type - add Notes, then press Passed, Failed or Red tag. It is built for a phone.
+A red tag needs a note saying what is wrong. Ticking Raise a service job for this creates one service job for the item, titled from your note and linked back to the inspection; leave it unticked if you have already fixed it. Press Finish visit when you are done - items nobody reached stay due and appear on the next visit.
+Filling in a visit is for the inspector it was assigned to, admins and Super Admins.
+
+## Red tags
+A red tag means the standard is not met. The item goes Out of service and it and its department show red on every screen until somebody clears it. Open Inspections > Red tags, press Clear and say what was done: an inspector, an admin or a Super Admin can clear it, the note is required, and the record keeps who raised it and who cleared it. Cleared tags stay on the list under Including cleared, which is what an authority is shown.
+
+## The fleet
+Inspections > Fleet holds the site's vehicles: Name, Registration, Type, Make, Model, Driver, Odometer and Status. Attach a form to the fleet the same way as to a department, give each vehicle a frequency, and inspect them exactly like equipment. A vehicle has no service jobs of its own: what an inspection finds stays on the inspection and on the red tag list.""",
+    ),
+    (
+        "guide.service",
+        "service-requests",
+        "How to raise and update service: the work done when something is at fault",
+        """Service is the work raised because something is at fault or malfunctioning. It is not a schedule: what is scheduled lives in Inspections, and each item carries its own frequency.
+
+## Where to find it
+Open the site, then Service in the bar under the page title. The site's page shows how many service jobs are open and how many are overdue.
+
+## Where a service job comes from
+- **An inspection found it.** Recording Failed or Red tag on an item offers the inspector a tick, Raise a service job for this. Ticked, it creates one job titled from their note, and the job says From inspection with the inspection's number.
+- **Somebody reported it.** Press New service and raise one by hand.
+
+## Raise one by hand
+1. Open Service and press New service.
+2. Choose the Category, then the Equipment in it. Where the equipment is shows underneath.
+3. Fill in What needs doing, the Due date and who it is Assigned to. The person assigned is notified.
+4. Leave Status as Open, or set In progress or Done.
+5. Press Raise service.
 
 ## Record what it cost
 Under Cost, enter Labour and Parts; the Total is shown. The cost counts as maintenance spend once the job is Done and does not change the equipment's book value.
 For a service that is a major overhaul or upgrade, tick Major work that extends its life. When the job is Done its cost is added to the equipment's value in the asset ledger and depreciated over the remaining life. Unticking it, reopening the job or changing the cost corrects the ledger by reversing the earlier entry. Only managers and admins can mark major work.
 
 ## Update a job
-Click the job in the list. Change the Status between Open, In progress and Done, record Labour and Parts, add Notes, and press Save. For an inspection, also record the Result - Pass or Fail - and the Findings.
-A technician can update the status, costs, notes, result and findings of jobs assigned to them; changing what needs doing, the equipment, the due date, who it is assigned to or whether it is major work is for managers and admins.
+Click the job in the list. Change the Status between Open, In progress and Done, record Labour and Parts, add Notes, and press Save.
+A technician can update the status, costs and notes of jobs assigned to them; changing what needs doing, the equipment, the due date, who it is assigned to or whether it is major work is for managers and admins.
 
 ## Find jobs
 The chips at the top filter the list: All, Open, In progress, Done and Overdue, each with its count. A job is overdue when its due date has passed and it is not done. The list can also be searched and filtered by Category, and jobs marked Major work say so.

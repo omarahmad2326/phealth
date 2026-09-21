@@ -405,12 +405,14 @@ def record_item(
     inspection = db.get(Inspection, inspection_id)
     if inspection is None or inspection.batch_id != batch.id:
         raise HTTPException(status_code=404, detail="That item is not in this visit")
-    programme.record_item(db, current_user, inspection, result=payload.result,
-                          answers=payload.answers, note=payload.note)
+    _, job = programme.record_item(db, current_user, inspection, result=payload.result,
+                                   answers=payload.answers, note=payload.note,
+                                   raise_service_job=payload.raise_service)
     db.commit()
     db.refresh(inspection)
     return {"item": programme.inspection_payload(db, inspection),
-            "visit": programme.visit_payload(db, batch)}
+            "visit": programme.visit_payload(db, batch),
+            "service": ({"id": job.id, "number": job.request_number} if job else None)}
 
 
 @router.post("/visits/{visit_id}/finish")
