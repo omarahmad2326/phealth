@@ -194,7 +194,7 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
     assert set(guides) == {"guide.site_categories", "guide.inspections", "guide.service"}
     for words in ("Add equipment", "Where is it?", "Building", "Room / exact spot", "Out of service",
                   "Open Facility and choose", "Cost & value", "In service since", "Useful life", "Book value today",
-                  "View asset & value history", "Add to a category", "$38,250", "Inspections and PM"):
+                  "View asset & value history", "Add to a category", "$38,250", "Inspections and PM", "Open site"):
         assert words in guides["guide.site_categories"].body, words
     # An inspection is the schedule; service is the fault. The guides must not
     # blur the two, or Phia will explain a product that no longer exists.
@@ -214,7 +214,7 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
     pages = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
     if pages.is_dir():
         screens = "".join(page.read_text(encoding="utf-8") for folder in
-                          ("Categories", "Service", "Departments", "InspectionVisits", "Fleet", "RedTags", "InspectionStatus",
+                          ("Categories", "Service", "Departments", "InspectionVisits", "Fleet", "RedTags", "InspectionStatus", "Sites",
                            "Inspections/programme")
                           for page in (pages / folder).glob("*.tsx"))
         for label in ("Add equipment", "Where is it?", "Room / exact spot", "What needs doing", "Assigned to",
@@ -223,7 +223,7 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
                       "Major work that extends its life", "Inspections and PM", "Add department", "Assign items",
                       "Attach a form", "Schedule inspection", "Schedule visit", "Finish visit",
                       "Raise a service job for this", "Clear red tag", "Add vehicle",
-                      "Inspect it now", "New inspection", "Start inspection"):
+                      "Inspect it now", "New inspection", "Start inspection", "Open site"):
             assert label in screens, label
     print("ok  the guides use the screens' own words and are part of the knowledge base")
 

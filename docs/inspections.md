@@ -139,6 +139,7 @@ screen is what an authority would be shown.
 
 | Screen | Path |
 |---|---|
+| Sites: one row per site; a row drops open into its six counts and Open site | `/sites?open=:id` |
 | Dashboard block: item counts per site, with a site picker | `/dashboard` |
 | Inspection status: the items behind any count card | `/inspection-status?state=&site=&department=&kind=` |
 | Service: faults and malfunctions, assigned and costed | `/service` |

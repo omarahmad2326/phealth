@@ -9,7 +9,7 @@ Two words matter here and they are not interchangeable: an **inspection** is
 the schedule that keeps equipment to standard, and **service** is the work
 raised when something is at fault. Keep these guides in step with
 pages/Categories, pages/Departments, pages/InspectionVisits, pages/Fleet,
-pages/RedTags, pages/InspectionStatus and pages/Service.
+pages/RedTags, pages/InspectionStatus, pages/Sites and pages/Service.
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ _GUIDES: tuple[tuple[str, str, str, str], ...] = (
         """Under Facility, every site files its equipment in categories: Electrical, Plumbing, Mechanical, HVAC, Building, Landscaping and Parking.
 
 ## Where to find it
-Open the site from Sites. The bar under the page title shows the site's name, Inspections, Service, Facility and Compliance. Open Facility and choose a category. The site's own page also shows a tile for each category with how many items it has, their total book value and how many need attention. The Back arrow left of the page title returns to the previous screen.
+Open the site from Sites. Each site there is one row showing what needs attention - red tags, overdue and due - or Pass when nothing does; click the row and it drops open into the site's Passed, Failed, Red tagged, In progress, Due and Overdue numbers, each of which opens its list, with Open site to go in. One row is open at a time, and searching down to a single site opens it. The bar under the page title shows the site's name, Inspections, Service, Facility and Compliance. Open Facility and choose a category. The site's own page also shows a tile for each category with how many items it has, their total book value and how many need attention. The Back arrow left of the page title returns to the previous screen.
 
 ## Add equipment
 1. Open the category, for example Facility > Electrical.
