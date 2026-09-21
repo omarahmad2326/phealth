@@ -135,7 +135,7 @@ refresh once a change is made.
 
 ## Checking it after a change
 
-The evaluation set is twenty real questions with what a correct turn looks
+The evaluation set is forty-six real questions with what a correct turn looks
 like: routing, tools used, the action prepared, and phrases an answer must not
 contain ("has been raised"). Run it against the deployment after changing a
 model or a prompt:
