@@ -504,6 +504,86 @@ def create_visit(db: Session, user: User, *, facility_id: int, scope: str, depar
     return batch
 
 
+def inspect_now(db: Session, user: User, *, facility_id: int, equipment_id: Optional[int] = None,
+                vehicle_id: Optional[int] = None, form_id: Optional[int] = None,
+                scheduled_on: Optional[date] = None, inspector_id: Optional[int] = None,
+                today: Optional[date] = None) -> InspectionBatch:
+    """Inspect one item now: a visit of one, whether or not it was due.
+
+    Scheduling covers the programme - what falls due, in departments, in
+    batches. This covers the other thing people do: they are standing in front
+    of something and want it inspected. It therefore asks for as little as it
+    can - the item and a form - and does not care whether the item is due, or
+    even whether it is in a department yet.
+    """
+    today = today or utc_today()
+    if bool(equipment_id) == bool(vehicle_id):
+        raise ProgrammeError("Name either equipment_id or vehicle_id.")
+
+    if equipment_id:
+        item = db.get(Equipment, equipment_id)
+        if item is None or item.name is None or item.facility_id != facility_id:
+            raise ProgrammeError("No equipment with that id at this site.", 404)
+        links = forms_for(db, department_id=item.department_id) if item.department_id else []
+        scope = "department" if item.department_id else "facility"
+        department_id = item.department_id
+    else:
+        item = db.get(Vehicle, vehicle_id)
+        if item is None or item.facility_id != facility_id:
+            raise ProgrammeError("No vehicle with that id at this site.", 404)
+        links = forms_for(db, facility_id=facility_id)
+        scope, department_id = "fleet", None
+
+    # The form is the one thing an inspection cannot do without. The item's
+    # department usually supplies it; anything in the library can be chosen
+    # instead, which is what makes an item with no department inspectable.
+    form = db.get(InspectionForm, form_id) if form_id else None
+    if form_id and form is None:
+        raise ProgrammeError("No inspection form with that id.", 404)
+    if form is None:
+        form = links[0][1] if links else None
+    if form is None:
+        raise ProgrammeError("Choose an inspection form: this item's department has none attached.")
+
+    inspector = db.get(User, inspector_id) if inspector_id else None
+    if inspector_id and (inspector is None or not inspector.is_active):
+        raise ProgrammeError("No active person with that id.")
+
+    when = datetime.combine(scheduled_on or today, datetime.min.time())
+    batch = InspectionBatch(
+        batch_number=_visit_number(db),
+        facility_id=facility_id,
+        department_id=department_id,
+        inspector_id=inspector.id if inspector else user.id,
+        form_template_id=form.id,
+        status=InspectionStatus.UPCOMING,
+        scheduled_date=when,
+        inspection_scope=scope,
+        is_instant=True,
+        created_at=datetime.utcnow(),
+    )
+    db.add(batch)
+    db.flush()
+    db.add(Inspection(
+        inspection_number=_inspection_number(db, 1),
+        batch_id=batch.id,
+        facility_id=facility_id,
+        equipment_id=equipment_id,
+        vehicle_id=vehicle_id,
+        department_id=department_id,
+        inspector_id=batch.inspector_id,
+        form_template_id=form.id,
+        status=InspectionStatus.UPCOMING,
+        result=InspectionResult.PENDING,
+        scheduled_date=when,
+        inspection_scope=scope,
+        is_instant=True,
+        created_at=datetime.utcnow(),
+    ))
+    db.flush()
+    return batch
+
+
 def visit_rows(db: Session, facility_id: int, *, status: Optional[str] = None,
                department_id: Optional[int] = None, limit: int = 200) -> list[InspectionBatch]:
     query = db.query(InspectionBatch).filter(InspectionBatch.facility_id == facility_id,

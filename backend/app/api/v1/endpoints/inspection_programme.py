@@ -22,7 +22,8 @@ from app.models.red_tag import RedTag
 from app.models.user import User, UserRole
 from app.models.vehicle import Vehicle
 from app.schemas.inspection_programme import (
-    BulkAssignIn, ClearRedTagIn, FinishVisitIn, FormAttachIn, ItemScheduleIn, RecordItemIn, VisitIn,
+    BulkAssignIn, ClearRedTagIn, FinishVisitIn, FormAttachIn, InspectNowIn, ItemScheduleIn, RecordItemIn,
+    VisitIn,
 )
 from app.services import inspection_due, inspection_programme as programme
 from app.utils.clock import utc_today
@@ -366,6 +367,29 @@ def create_visit(
     batch = programme.create_visit(
         db, current_user, facility_id=payload.facility_id, scope=payload.scope,
         department_id=payload.department_id, scheduled_on=payload.scheduled_on,
+        inspector_id=payload.inspector_id,
+    )
+    db.commit()
+    db.refresh(batch)
+    return programme.visit_payload(db, batch, with_items=True)
+
+
+@router.post("/inspections", status_code=201)
+def inspect_now(
+    payload: InspectNowIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Inspect one item now, whether or not it is due.
+
+    The same shape as raising a service on one piece of equipment: pick the
+    item, pick the form, go. It comes back as a visit of one, ready to fill in.
+    """
+    require_module_permission(current_user, "inspections", "add")
+    _site(db, current_user, payload.facility_id)
+    batch = programme.inspect_now(
+        db, current_user, facility_id=payload.facility_id, equipment_id=payload.equipment_id,
+        vehicle_id=payload.vehicle_id, form_id=payload.form_id, scheduled_on=payload.scheduled_on,
         inspector_id=payload.inspector_id,
     )
     db.commit()

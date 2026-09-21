@@ -16,6 +16,7 @@ import AddIcon from '@mui/icons-material/Add'
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
 import {
   attachDepartmentForm, clearRedTag, detachDepartmentForm, errorMessage, fetchDepartmentDetail,
   fetchFormLibrary, fetchInspectors, setItemSchedule, shortDate,
@@ -25,6 +26,7 @@ import { hasPermission } from '@/config/permissions'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 import { CountTile, DueChip, FrequencyFields, ResultChip } from '@/pages/Inspections/programme/parts'
+import InspectNowDialog, { type InspectTarget } from '@/pages/Inspections/programme/InspectNowDialog'
 import ScheduleVisitDialog from '@/pages/Inspections/programme/ScheduleVisitDialog'
 
 export default function DepartmentDetail() {
@@ -39,6 +41,7 @@ export default function DepartmentDetail() {
   const [attaching, setAttaching] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [editingItem, setEditingItem] = useState<ProgrammeItem | null>(null)
+  const [inspecting, setInspecting] = useState<InspectTarget | null>(null)
   const [clearing, setClearing] = useState<number | null>(null)
 
   const detail = useQuery({
@@ -170,7 +173,7 @@ export default function DepartmentDetail() {
 
       {/* ── items ─────────────────────────────────────────────────────────── */}
       <Section title="Items">
-        <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: '2fr 1.4fr 1fr 1.3fr 1fr 40px',
+        <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: '2fr 1.4fr 1fr 1.3fr 1fr 76px',
                    px: 2, py: 1, gap: 1.2, bgcolor: palette.surfaceMuted }}>
           {['Item', 'Where', 'Every', 'Next due', 'Last result', ''].map((head) => (
             <Typography key={head} sx={{ fontSize: 11, fontWeight: 900, letterSpacing: 0.4,
@@ -186,7 +189,7 @@ export default function DepartmentDetail() {
         {items.map((item) => (
           <Box key={item.id}
                sx={{ display: 'grid', gap: 1.2, alignItems: 'center',
-                     gridTemplateColumns: { xs: '1fr auto', md: '2fr 1.4fr 1fr 1.3fr 1fr 40px' },
+                     gridTemplateColumns: { xs: '1fr auto', md: '2fr 1.4fr 1fr 1.3fr 1fr 76px' },
                      px: 2, py: 1.3, borderTop: `1px solid ${palette.borderSoft}` }}>
             <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" spacing={0.6} alignItems="center" sx={{ minWidth: 0 }}>
@@ -213,6 +216,17 @@ export default function DepartmentDetail() {
               <ResultChip result={item.last_result} />
             </Box>
             <Stack direction="row" sx={{ justifySelf: 'end' }}>
+              {canAdd && (
+                <Tooltip title="Inspect it now">
+                  <IconButton size="small" aria-label={`Inspect ${item.name} now`}
+                              onClick={() => setInspecting({
+                                kind: 'equipment', id: item.id, name: item.name,
+                                departmentId: departmentId,
+                              })}>
+                    <PlaylistAddCheckIcon sx={{ fontSize: 19, color: palette.brand }} />
+                  </IconButton>
+                </Tooltip>
+              )}
               {canEdit && (
                 <Tooltip title="Set how often it is inspected">
                   <IconButton size="small" aria-label={`Schedule for ${item.name}`}
@@ -270,6 +284,10 @@ export default function DepartmentDetail() {
       {clearing !== null && (
         <ClearRedTagDialog tagId={clearing} onClose={() => setClearing(null)}
                            onSaved={() => { setClearing(null); refresh() }} />
+      )}
+      {inspecting && (
+        <InspectNowDialog facilityId={department.facility_id} target={inspecting}
+                          onClose={() => setInspecting(null)} />
       )}
     </Box>
   )

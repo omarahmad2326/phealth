@@ -17,6 +17,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
 import {
   addVehicle, attachFleetForm, deleteVehicle, detachFleetForm, fetchVehicles, updateVehicle,
 } from '@/api/fleet'
@@ -29,6 +30,7 @@ import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 import { CountTile, DueChip, FrequencyFields, ResultChip } from '@/pages/Inspections/programme/parts'
+import InspectNowDialog, { type InspectTarget } from '@/pages/Inspections/programme/InspectNowDialog'
 import ScheduleVisitDialog from '@/pages/Inspections/programme/ScheduleVisitDialog'
 
 const CONDITIONS = [
@@ -49,6 +51,7 @@ export default function FleetPage() {
   const [editing, setEditing] = useState<ProgrammeItem | 'new' | null>(null)
   const [attaching, setAttaching] = useState(false)
   const [scheduling, setScheduling] = useState(false)
+  const [inspecting, setInspecting] = useState<InspectTarget | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(search.trim()), 250)
@@ -169,7 +172,7 @@ export default function FleetPage() {
             ) }}
           />
         </Box>
-        <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: '1.8fr 1.2fr 1fr 1.3fr 1fr 40px',
+        <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: '1.8fr 1.2fr 1fr 1.3fr 1fr 84px',
                    px: 2, py: 1, gap: 1.2, bgcolor: palette.surfaceMuted }}>
           {['Vehicle', 'Registration', 'Every', 'Next due', 'Last result', ''].map((head) => (
             <Typography key={head} sx={{ fontSize: 11, fontWeight: 900, letterSpacing: 0.4,
@@ -186,7 +189,7 @@ export default function FleetPage() {
           <Box key={vehicle.id}
                onClick={() => canEdit && setEditing(vehicle)}
                sx={{ display: 'grid', gap: 1.2, alignItems: 'center', cursor: canEdit ? 'pointer' : 'default',
-                     gridTemplateColumns: { xs: '1fr auto', md: '1.8fr 1.2fr 1fr 1.3fr 1fr 40px' },
+                     gridTemplateColumns: { xs: '1fr auto', md: '1.8fr 1.2fr 1fr 1.3fr 1fr 84px' },
                      px: 2, py: 1.4, borderTop: `1px solid ${palette.borderSoft}`,
                      '&:hover': canEdit ? { bgcolor: palette.brandTint } : undefined }}>
             <Box sx={{ minWidth: 0 }}>
@@ -213,10 +216,21 @@ export default function FleetPage() {
             <Box sx={{ display: { xs: 'none', md: 'block' } }}>
               <ResultChip result={vehicle.last_result} />
             </Box>
-            <Typography sx={{ display: { xs: 'none', md: 'block' }, fontSize: 12, color: palette.textFaint,
-                              fontWeight: 700, justifySelf: 'end' }}>
-              {vehicle.odometer ? `${vehicle.odometer.toLocaleString()} km` : ''}
-            </Typography>
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ justifySelf: 'end' }}>
+              <Typography sx={{ display: { xs: 'none', md: 'block' }, fontSize: 12, color: palette.textFaint,
+                                fontWeight: 700 }}>
+                {vehicle.odometer ? `${vehicle.odometer.toLocaleString()} km` : ''}
+              </Typography>
+              {canAdd && (
+                <Tooltip title="Inspect it now">
+                  <IconButton size="small" aria-label={`Inspect ${vehicle.name} now`}
+                              onClick={(e) => { e.stopPropagation(); setInspecting({
+                                kind: 'vehicle', id: vehicle.id, name: vehicle.name }) }}>
+                    <PlaylistAddCheckIcon sx={{ fontSize: 19, color: palette.brand }} />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Stack>
           </Box>
         ))}
       </Box>
@@ -235,6 +249,9 @@ export default function FleetPage() {
       )}
       {scheduling && facilityId && (
         <ScheduleVisitDialog facilityId={facilityId} scope="fleet" onClose={() => setScheduling(false)} />
+      )}
+      {inspecting && facilityId && (
+        <InspectNowDialog facilityId={facilityId} target={inspecting} onClose={() => setInspecting(null)} />
       )}
     </Box>
   )

@@ -199,7 +199,8 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
     # An inspection is the schedule; service is the fault. The guides must not
     # blur the two, or Phia will explain a product that no longer exists.
     for words in ("Add department", "Assign items", "Attach a form", "Schedule inspection", "Schedule visit",
-                  "Raise a service job for this", "Finish visit", "Red tag", "Fleet", "Overdue"):
+                  "Raise a service job for this", "Finish visit", "Red tag", "Fleet", "Overdue",
+                  "Inspect it now", "New inspection", "Start inspection"):
         assert words in guides["guide.inspections"].body, words
     assert "maintenance plan" in guides["guide.inspections"].body.lower()
     for words in ("New service", "Raise service", "What needs doing", "Labour", "Parts",
@@ -221,7 +222,8 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
                       "View asset & value history", "Add to a category", "Labour", "Parts",
                       "Major work that extends its life", "Inspections and PM", "Add department", "Assign items",
                       "Attach a form", "Schedule inspection", "Schedule visit", "Finish visit",
-                      "Raise a service job for this", "Clear red tag", "Add vehicle"):
+                      "Raise a service job for this", "Clear red tag", "Add vehicle",
+                      "Inspect it now", "New inspection", "Start inspection"):
             assert label in screens, label
     print("ok  the guides use the screens' own words and are part of the knowledge base")
 

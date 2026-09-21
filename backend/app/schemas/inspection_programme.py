@@ -48,6 +48,17 @@ class VisitIn(BaseModel):
     inspector_id: Optional[int] = None
 
 
+class InspectNowIn(BaseModel):
+    """Inspect one item now, due or not: the equipment and a form."""
+    facility_id: int
+    equipment_id: Optional[int] = None
+    vehicle_id: Optional[int] = None
+    # Defaults to the item's department's first form.
+    form_id: Optional[int] = None
+    scheduled_on: Optional[date] = None
+    inspector_id: Optional[int] = None
+
+
 class RecordItemIn(BaseModel):
     result: Result
     # One entry per form filled on this item: {"form_id": 3, "name": "...",

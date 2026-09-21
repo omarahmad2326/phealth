@@ -268,6 +268,12 @@ export const createVisit = async (body: {
   scheduled_on: string; inspector_id?: number | null
 }): Promise<Visit> => (await apiClient.post(`${base}/visits`, body)).data
 
+/** Inspect one item now, due or not: comes back as a visit of one. */
+export const inspectNow = async (body: {
+  facility_id: number; equipment_id?: number | null; vehicle_id?: number | null
+  form_id?: number | null; scheduled_on?: string | null; inspector_id?: number | null
+}): Promise<Visit> => (await apiClient.post(`${base}/inspections`, body)).data
+
 export const fetchVisit = async (id: number): Promise<Visit> =>
   (await apiClient.get(`${base}/visits/${id}`)).data
 

@@ -81,6 +81,10 @@ Nothing is created when an item falls due. The people who have to act - the pers
 3. Choose the Date and the Inspector. Before anything is created the dialog says how many items would be due by that date, and names a few.
 4. Press Schedule visit. The visit holds the items due by then; anything overdue stays in until it is done.
 
+## Inspect one item now
+Scheduling is for what falls due. To inspect one thing there and then, press Inspect it now - the tick-list icon on any equipment row under Facility, on any item in a department, or on any vehicle in the Fleet - or press New inspection on Inspections > Visits and choose the Category and the Equipment.
+It asks only for Inspect on (the form) and, if you want, a Date and an Inspector. The form is already chosen when the item is in a department that has one; an item that is in no department can still be inspected by choosing any form from the library. Press Start inspection and it opens straight away for filling in, whether or not it was due. Recording it moves the item's next date on exactly as a scheduled inspection does.
+
 ## Fill in a visit
 The visit lists its items. Open one, answer the department's forms - each question is Pass, Fail or N/A, or a value to type - add Notes, then press Passed, Failed or Red tag. It is built for a phone.
 A red tag needs a note saying what is wrong. Ticking Raise a service job for this creates one service job for the item, titled from your note and linked back to the inspection; leave it unticked if you have already fixed it. Press Finish visit when you are done - items nobody reached stay due and appear on the next visit.

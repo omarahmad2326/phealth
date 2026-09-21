@@ -37,7 +37,8 @@ from app.models.user import User, UserRole, UserType  # noqa: E402
 from app.models.user_facility import UserFacility  # noqa: E402
 from app.models.vehicle import Vehicle  # noqa: E402
 from app.schemas.inspection_programme import (  # noqa: E402
-    BulkAssignIn, ClearRedTagIn, FinishVisitIn, FormAttachIn, ItemScheduleIn, RecordItemIn, VehicleIn, VisitIn,
+    BulkAssignIn, ClearRedTagIn, FinishVisitIn, FormAttachIn, InspectNowIn, ItemScheduleIn, RecordItemIn,
+    VehicleIn, VisitIn,
 )
 from app.schemas.site_categories import CategoryEquipmentCreate  # noqa: E402
 from app.services import inspection_due, inspection_programme as programme  # noqa: E402
@@ -221,6 +222,54 @@ def test_a_visit_contains_what_is_due_and_nothing_else():
     assert "Nothing is due" in empty, empty
     db.close()
     print("ok  a visit is scheduled for a date and holds the items due by then")
+
+
+def test_any_equipment_can_be_inspected_now():
+    """The other half of the programme: pick the equipment and go.
+
+    Scheduling is for what falls due. This is for standing in front of
+    something - so it must not ask for a due date, a department, or a
+    department that happens to have a form attached.
+    """
+    db, site, _, people, departments, equipment, forms = build()
+
+    # Not due for 200 days, and nothing is scheduled: inspect it anyway.
+    visit = api.inspect_now(InspectNowIn(facility_id=site.id, equipment_id=equipment["ultrasound"]["id"]),
+                            db=db, current_user=people["boss"])
+    assert visit["items"] == 1 and visit["item_list"][0]["name"] == "Ultrasound US-03"
+    assert visit["department"] == "Radiology", "it keeps the department it belongs to"
+    assert visit["scheduled_on"] == TODAY and visit["inspector"]["name"] == "Boss"
+    assert visit["item_list"][0]["forms"], "the department's form comes with it"
+
+    recorded = api.record_item(visit["id"], visit["item_list"][0]["id"], RecordItemIn(result="pass"),
+                               db=db, current_user=people["boss"])
+    assert recorded["item"]["result"] == "pass"
+    ultrasound = db.get(Equipment, equipment["ultrasound"]["id"])
+    assert ultrasound.last_pm_date == TODAY and ultrasound.last_inspection_result == "pass"
+
+    # An item nobody has put in a department, with a form chosen by hand.
+    generator = db.get(Equipment, equipment["generator"]["id"])
+    assert generator.department_id is None
+    refused(lambda: api.inspect_now(InspectNowIn(facility_id=site.id, equipment_id=generator.id),
+                                    db=db, current_user=people["boss"]), 422)
+    chosen = api.inspect_now(InspectNowIn(facility_id=site.id, equipment_id=generator.id,
+                                          form_id=forms["safety"].id, inspector_id=people["ali"].id),
+                             db=db, current_user=people["boss"])
+    assert chosen["items"] == 1 and chosen["department"] is None and chosen["scope"] == "facility"
+    assert chosen["inspector"]["name"] == "Ali"
+
+    # A vehicle, the same way.
+    vehicle = fleet_api.add_vehicle(VehicleIn(facility_id=site.id, name="Van 2", frequency="monthly"),
+                                    db=db, current_user=people["boss"])
+    fleet_visit = api.inspect_now(InspectNowIn(facility_id=site.id, vehicle_id=vehicle["id"]),
+                                  db=db, current_user=people["boss"])
+    assert fleet_visit["scope"] == "fleet" and fleet_visit["item_list"][0]["name"] == "Van 2"
+
+    refused(lambda: api.inspect_now(InspectNowIn(facility_id=site.id), db=db, current_user=people["boss"]), 422)
+    refused(lambda: api.inspect_now(InspectNowIn(facility_id=site.id, equipment_id=99999),
+                                    db=db, current_user=people["boss"]), 404)
+    db.close()
+    print("ok  any equipment or vehicle can be inspected now, due or not, department or not")
 
 
 def test_a_whole_site_visit_covers_every_department():

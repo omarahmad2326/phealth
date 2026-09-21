@@ -19,6 +19,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined'
 import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlined'
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
 import {
   fetchCategoryEquipment, fetchPlaceSuggestions, formatMoney, type CategoryCode, type CategoryEquipment,
   type Condition,
@@ -29,6 +30,7 @@ import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 import EquipmentDialog from './EquipmentDialog'
+import InspectNowDialog, { type InspectTarget } from '@/pages/Inspections/programme/InspectNowDialog'
 
 const shortDate = (value: string | null) =>
   value ? new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
@@ -58,6 +60,10 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
   const [condition, setCondition] = useState('')
   const [editing, setEditing] = useState<CategoryEquipment | null>(null)
   const [adding, setAdding] = useState(false)
+  // Inspecting is not only something that falls due: any item can be
+  // inspected from where it lives, the way a service is raised on it.
+  const [inspecting, setInspecting] = useState<InspectTarget | null>(null)
+  const canInspect = hasPermission(user, 'inspections', 'add')
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(search.trim()), 250)
@@ -185,6 +191,10 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
           <EquipmentRow
             key={item.id} item={item} onOpen={canEdit ? () => setEditing(item) : undefined}
             onValue={() => navigate(`/assets?asset=${item.id}`)}
+            onInspect={canInspect ? () => setInspecting({
+              kind: 'equipment', id: item.id, name: item.name,
+              departmentId: item.department_id, category: code,
+            }) : undefined}
           />
         ))}
       </Box>
@@ -200,6 +210,9 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
         </Button>
       </Stack>
 
+      {inspecting && facilityId && (
+        <InspectNowDialog facilityId={facilityId} target={inspecting} onClose={() => setInspecting(null)} />
+      )}
       {(adding || editing) && facilityId && (
         <EquipmentDialog
           facilityId={facilityId} category={code} types={types} item={editing}
@@ -212,16 +225,18 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
   )
 }
 
-const COLUMNS = 'minmax(0, 2.1fr) minmax(0, 2fr) 44px 138px 108px 124px 36px'
+const COLUMNS = 'minmax(0, 2.1fr) minmax(0, 2fr) 44px 138px 108px 124px 72px'
 
 /** A filter whose empty choice ("All buildings") shows, rather than a bare label. */
 const SHOW_EMPTY ={ SelectProps: { displayEmpty: true }, InputLabelProps: { shrink: true } }
 
-function EquipmentRow({ item, onOpen, onValue }: {
+function EquipmentRow({ item, onOpen, onValue, onInspect }: {
   item: CategoryEquipment
   onOpen?: () => void
   /** Open the same record in the Asset Register, where its value history lives. */
   onValue: () => void
+  /** Inspect it now, without waiting for it to fall due. */
+  onInspect?: () => void
 }) {
   const status = CONDITION_STYLE[item.condition]
   const overdue = isPast(item.next_service_on)
@@ -292,15 +307,28 @@ function EquipmentRow({ item, onOpen, onValue }: {
           </Typography>
         )}
       </Box>
-      <Tooltip title="Asset & value history">
-        <IconButton
-          size="small" aria-label={`Asset and value history for ${item.name}`}
-          onClick={(e) => { e.stopPropagation(); onValue() }}
-          sx={{ display: { xs: 'none', md: 'inline-flex' }, color: palette.brand }}
-        >
-          <AccountBalanceOutlinedIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
+      <Stack direction="row" spacing={0.25} sx={{ justifySelf: 'end' }}>
+        {onInspect && (
+          <Tooltip title="Inspect it now">
+            <IconButton
+              size="small" aria-label={`Inspect ${item.name} now`}
+              onClick={(e) => { e.stopPropagation(); onInspect() }}
+              sx={{ color: palette.brand }}
+            >
+              <PlaylistAddCheckIcon sx={{ fontSize: 19 }} />
+            </IconButton>
+          </Tooltip>
+        )}
+        <Tooltip title="Asset & value history">
+          <IconButton
+            size="small" aria-label={`Asset and value history for ${item.name}`}
+            onClick={(e) => { e.stopPropagation(); onValue() }}
+            sx={{ display: { xs: 'none', md: 'inline-flex' }, color: palette.brand }}
+          >
+            <AccountBalanceOutlinedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Stack>
     </Box>
   )
 }

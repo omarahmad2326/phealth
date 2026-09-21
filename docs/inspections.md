@@ -34,6 +34,7 @@ Site  ──>  Department  ──>  items (equipment)      ──┐
 | **Item** | A piece of equipment in a department, or a vehicle in the fleet. Carries its frequency, its next date, its last result. |
 | **Form** | A checklist built in the form builder, attached to a department (or to the fleet) with the frequency normally used there. |
 | **Visit** | A date, a scope and the items due by then. Filled in one item at a time. |
+| **Inspect now** | A visit of one, on any item, due or not. The other way in, matching how a service is raised on one piece of equipment. |
 | **Red tag** | A failure serious enough to say the standard is not met. It outlives the inspection. |
 | **Service job** | Corrective work. Raised from a failed inspection when the inspector asks for it, or by hand for a reported fault. Carries the assignee and the cost. |
 
@@ -82,6 +83,24 @@ A fault nobody inspected is raised by hand on Service, as before.
 A vehicle has no equipment record for a job to hang on, so fleet findings stay
 on the inspection and on the red tag list. If the fleet needs its own work
 queue, that is a small addition, not a redesign.
+
+## Inspecting one item now
+
+Scheduling covers the programme: a department, a date, whatever is due. The
+other thing people do is stand in front of something and want it inspected, so
+**Inspect it now** is on every equipment row in Facility, on every item in a
+department, on every vehicle in the fleet, and as **New inspection** on the
+Visits screen.
+
+It asks for as little as it can — the item and a form — and it does not care
+whether the item is due, or whether it is in a department yet:
+
+* the form defaults to the item's department's first form, so the usual case is
+  one press;
+* an item in no department can still be inspected: choose any form from the
+  library;
+* it opens straight away as a visit of one, ready to fill in;
+* recording it moves the item's clock exactly as a scheduled inspection does.
 
 ## Red tags
 
@@ -132,6 +151,7 @@ PUT  inspection-programme/items/{id}/schedule         one item's clock
 POST inspection-programme/items/bulk-assign           many at once
 GET  inspection-programme/due                         what a visit would hold
 POST inspection-programme/visits                      schedule one
+POST inspection-programme/inspections                 inspect one item now
 POST inspection-programme/visits/{id}/items/{ins}     record one item
                                                       (raise_service: the tick)
 POST inspection-programme/visits/{id}/finish

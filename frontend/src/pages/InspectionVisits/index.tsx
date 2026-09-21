@@ -9,12 +9,14 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material'
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
 import { fetchVisits, shortDate } from '@/api/inspectionProgramme'
 import { hasPermission } from '@/config/permissions'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 import { ResultChip } from '@/pages/Inspections/programme/parts'
+import InspectNowDialog from '@/pages/Inspections/programme/InspectNowDialog'
 import ScheduleVisitDialog from '@/pages/Inspections/programme/ScheduleVisitDialog'
 
 const SCOPE_LABEL: Record<string, string> = {
@@ -27,6 +29,7 @@ export default function InspectionVisitsPage() {
   const { facilityId, facility } = useActiveFacility()
   const [filter, setFilter] = useState<'open' | 'done' | 'all'>('open')
   const [scheduling, setScheduling] = useState(false)
+  const [inspecting, setInspecting] = useState(false)
   const canAdd = hasPermission(user, 'inspections', 'add')
 
   const list = useQuery({
@@ -52,11 +55,19 @@ export default function InspectionVisitsPage() {
           </Typography>
         </Box>
         {canAdd && (
-          <Button variant="contained" startIcon={<EventAvailableOutlinedIcon />} onClick={() => setScheduling(true)}
-                  sx={{ fontWeight: 900, borderRadius: '12px', px: 2.5, bgcolor: palette.brand,
-                        '&:hover': { bgcolor: palette.brandDeep } }}>
-            Schedule inspection
-          </Button>
+          <Stack direction="row" spacing={1}>
+            {/* Two ways in, as with service: plan the round, or inspect one
+                thing you are standing in front of. */}
+            <Button variant="outlined" startIcon={<PlaylistAddCheckIcon />} onClick={() => setInspecting(true)}
+                    sx={{ fontWeight: 900, borderRadius: '12px' }}>
+              New inspection
+            </Button>
+            <Button variant="contained" startIcon={<EventAvailableOutlinedIcon />} onClick={() => setScheduling(true)}
+                    sx={{ fontWeight: 900, borderRadius: '12px', px: 2.5, bgcolor: palette.brand,
+                          '&:hover': { bgcolor: palette.brandDeep } }}>
+              Schedule inspection
+            </Button>
+          </Stack>
         )}
       </Stack>
 
@@ -120,6 +131,9 @@ export default function InspectionVisitsPage() {
 
       {scheduling && facilityId && (
         <ScheduleVisitDialog facilityId={facilityId} onClose={() => setScheduling(false)} />
+      )}
+      {inspecting && facilityId && (
+        <InspectNowDialog facilityId={facilityId} onClose={() => setInspecting(false)} />
       )}
     </Box>
   )
