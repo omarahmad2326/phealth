@@ -95,6 +95,7 @@ const Sidebar = () => {
   const [expandedGroups, setExpandedGroups] = useState<Set<ModuleGroup>>(new Set())
 
   const { facility } = useActiveFacility()
+  const onSites = location.pathname === '/sites'
   const visibleModules = getVisibleModules(user)
   const menuItems = useMemo(
     () => allMenuItems.filter((item) => visibleModules.includes(item.module)),
@@ -378,7 +379,7 @@ const Sidebar = () => {
       )}
       {/* On Sites you are choosing a site, so the last one visited is not
           offered; inside a site it is one click back to its dashboard. */}
-      {facility && visibleModules.includes('facilities') && location.pathname !== '/sites' && (
+      {facility && visibleModules.includes('facilities') && !onSites && (
         <RailButton
           label={facility.name} icon={<LocalHospitalOutlinedIcon />}
           active={location.pathname === `/sites/${facility.id}`}
@@ -386,6 +387,8 @@ const Sidebar = () => {
         />
       )}
 
+      {/* The Sites page is only for choosing a site: the rail there is Home. */}
+      {!onSites && (
       <Tooltip title={launcherOpen ? 'Close modules' : `Open modules${currentItem ? ` · ${currentItem.text}` : ''}`} placement="right" arrow>
         <Box
           component="button" type="button" aria-label="Open module navigation"
@@ -411,6 +414,7 @@ const Sidebar = () => {
           {launcherOpen ? <CloseRoundedIcon /> : <AppsRoundedIcon />}
         </Box>
       </Tooltip>
+      )}
 
 
       <Box sx={{ flex: 1 }} />
@@ -433,7 +437,7 @@ const Sidebar = () => {
         </Box>
       </Tooltip>
 
-      {launcherOpen && (
+      {launcherOpen && !onSites && (
         <>
           <Box
             aria-hidden="true" onClick={closeLauncher}
