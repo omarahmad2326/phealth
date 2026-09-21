@@ -14,7 +14,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Box, Button, ListItemIcon, ListItemText, Menu, MenuItem, Typography } from '@mui/material'
+import { Box, Button, Divider, ListItemIcon, ListItemText, Menu, MenuItem, Typography } from '@mui/material'
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
 import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined'
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
@@ -23,6 +23,12 @@ import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlin
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
 import HomeRepairServiceOutlinedIcon from '@mui/icons-material/HomeRepairServiceOutlined'
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
+import PrecisionManufacturingOutlinedIcon from '@mui/icons-material/PrecisionManufacturingOutlined'
+import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlined'
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined'
+import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined'
+import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined'
 import { fetchCategoryOverview } from '@/api/siteCategories'
 import { hasPermission } from '@/config/permissions'
 import { CATEGORIES, CATEGORIES_LABEL, COMPLIANCE_LINKS, SERVICE_LINK } from '@/config/siteCategories'
@@ -44,6 +50,29 @@ const INSPECTION_LINKS = [
     icon: <ReportProblemOutlinedIcon /> },
 ]
 
+// Screens that belong to the site but are not tiles on its dashboard. Each
+// sits at the end of the menu it belongs to, below a line.
+const MORE_LINKS: Record<MenuName, Array<{ name: string; description: string; path: string; icon: JSX.Element; module: string }>> = {
+  inspections: [
+    { name: 'Inspection forms', description: 'Build the checklists departments use', path: '/inspections',
+      icon: <DescriptionOutlinedIcon />, module: 'inspections' },
+  ],
+  categories: [
+    { name: 'Asset Register', description: 'Every machine, its history and value', path: '/assets',
+      icon: <PrecisionManufacturingOutlinedIcon />, module: 'facility-inventory' },
+    { name: 'Assets & Value', description: 'Cost, book value, full history', path: '/asset-ledger',
+      icon: <AccountBalanceOutlinedIcon />, module: 'facility-inventory' },
+    { name: 'Parts & Spares', description: 'Sales and rental parts', path: '/inventory',
+      icon: <Inventory2OutlinedIcon />, module: 'inventory' },
+    { name: 'Test Equipment', description: 'Test equipment library', path: '/test-equipment',
+      icon: <ScienceOutlinedIcon />, module: 'test-equipment' },
+  ],
+  compliance: [
+    { name: 'Contractors', description: 'Contractors, contracts, credentials', path: '/vendors',
+      icon: <HandshakeOutlinedIcon />, module: 'vendors' },
+  ],
+}
+
 export default function SiteNav() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -55,11 +84,12 @@ export default function SiteNav() {
   const showCategories = hasPermission(user, 'facility-inventory', 'index')
   const showService = hasPermission(user, SERVICE_LINK.module, 'index')
   const complianceLinks = COMPLIANCE_LINKS.filter((link) => hasPermission(user, link.module, 'index'))
-  const showCompliance = complianceLinks.length > 0
+  const more = (menu: MenuName) => MORE_LINKS[menu].filter((link) => hasPermission(user, link.module, 'index'))
+  const showCompliance = complianceLinks.length + more('compliance').length > 0
   const showInspections = hasPermission(user, 'inspections', 'index')
-  const inInspections = ['/departments', '/inspection-visits', '/fleet', '/red-tags']
+  const inInspections = ['/departments', '/inspection-visits', '/fleet', '/red-tags', '/inspections']
     .some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
-  const inCompliance = ['/compliance', '/permits']
+  const inCompliance = ['/compliance', '/permits', '/vendors']
     .some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 
   const { data: overview } = useQuery({
@@ -75,6 +105,23 @@ export default function SiteNav() {
 
   const counts = Object.fromEntries((overview?.categories ?? []).map((c) => [c.code, c]))
   const go = (path: string) => { setAnchor(null); navigate(path) }
+  // MUI menus take an array of children, not fragments, for keyboard focus.
+  const moreRows = (menu: MenuName) => {
+    const links = more(menu)
+    if (!links.length) return []
+    return [
+      <Divider key="more-divider" sx={{ my: 0.5 }} />,
+      ...links.map((link) => (
+        <MenuItem key={link.path} selected={pathname === link.path || pathname.startsWith(`${link.path}/`)}
+                  onClick={() => go(link.path)} sx={{ py: 1 }}>
+          <ListItemIcon sx={{ color: palette.textMuted }}>{link.icon}</ListItemIcon>
+          <ListItemText primary={link.name} secondary={link.description}
+                        primaryTypographyProps={{ fontWeight: 800, fontSize: 14 }}
+                        secondaryTypographyProps={{ fontSize: 12 }} />
+        </MenuItem>
+      )),
+    ]
+  }
 
   const tabSx = (active: boolean) => ({
     flexShrink: 0, textTransform: 'none', fontWeight: 900, fontSize: 13.5, borderRadius: '11px',
@@ -123,7 +170,8 @@ export default function SiteNav() {
           endIcon={<KeyboardArrowDownRoundedIcon />}
           aria-haspopup="menu" aria-expanded={anchor?.name === 'categories'}
           onClick={(e) => setAnchor({ name: 'categories', el: e.currentTarget })}
-          sx={tabSx(pathname.startsWith('/categories'))}
+          sx={tabSx(['/categories', '/assets', '/asset-ledger', '/inventory', '/test-equipment']
+            .some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)))}
         >
           {CATEGORIES_LABEL}
         </Button>
@@ -160,6 +208,7 @@ export default function SiteNav() {
                           secondaryTypographyProps={{ fontSize: 12 }} />
           </MenuItem>
         ))}
+        {moreRows('inspections')}
       </Menu>
       <Menu
         anchorEl={anchor?.el} open={anchor?.name === 'categories'} onClose={() => setAnchor(null)}
@@ -185,6 +234,7 @@ export default function SiteNav() {
             </MenuItem>
           )
         })}
+        {moreRows('categories')}
       </Menu>
       <Menu
         anchorEl={anchor?.el} open={anchor?.name === 'compliance'} onClose={() => setAnchor(null)}
@@ -198,6 +248,7 @@ export default function SiteNav() {
                           secondaryTypographyProps={{ fontSize: 12 }} />
           </MenuItem>
         ))}
+        {moreRows('compliance')}
       </Menu>
     </Box>
   )

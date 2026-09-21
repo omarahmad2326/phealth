@@ -1,15 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Box, InputBase, Tooltip, Typography } from '@mui/material'
 import { useLocation, useNavigate } from 'react-router-dom'
-import DashboardIcon from '@mui/icons-material/Dashboard'
-import HandshakeIcon from '@mui/icons-material/Handshake'
-import FactCheckIcon from '@mui/icons-material/FactCheck'
-import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
-import InventoryIcon from '@mui/icons-material/Inventory'
-import ScienceIcon from '@mui/icons-material/Science'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import PeopleIcon from '@mui/icons-material/People'
 import ChatBubbleIcon from '@mui/icons-material/ChatBubble'
@@ -25,96 +18,49 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded'
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded'
-import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
-import EventAvailableIcon from '@mui/icons-material/EventAvailable'
-import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
-import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
-import HomeRepairServiceIcon from '@mui/icons-material/HomeRepairService'
-import VerifiedUserIcon from '@mui/icons-material/VerifiedUser'
 import HomeRoundedIcon from '@mui/icons-material/HomeRounded'
 import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined'
 import ListAltIcon from '@mui/icons-material/ListAlt'
-import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
-import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline'
-import InsightsIcon from '@mui/icons-material/Insights'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
-import { getVisibleModules, hasPermission, type Module, type PermissionAction } from '@/config/permissions'
-import { CATEGORIES } from '@/config/siteCategories'
+import { getVisibleModules, type Module } from '@/config/permissions'
 import { palette } from '@/theme/palette'
 
-// The side bar follows the dashboard flow. First what spans every site:
-// Sites, the page you land on, and the lists behind its cards. Then the site
-// you are in, laid out exactly as its own dashboard is - Dashboard, then
-// Inspections, Facility, Service and Compliance, each starting with the tiles
-// that dashboard shows, in its order, with the few screens it does not show
-// at the end of the section they belong to. Then the organisation above the
-// sites. "Dashboard" inside a site only ever means that site's dashboard.
-type ModuleGroup =
-  | 'All sites' | 'Site' | 'Inspections' | 'Facility' | 'Service' | 'Compliance'
-  | 'Organisation' | 'People' | 'Commerce' | 'Workspace'
+// The launcher is for what is not about the site you are in: Sites and the
+// lists behind its cards, then the organisation - People, Commerce and
+// Workspace. A site's own screens are in the bar under the page title and on
+// its dashboard, so they are not repeated here.
+type ModuleGroup = 'All sites' | 'People' | 'Commerce' | 'Workspace'
 
-/**
- * Whether a module spans every site, belongs to the site you are in, or to
- * the organisation above them. Site screens only show once a site is open.
- */
-type ModuleScope = 'all' | 'site' | 'org'
+/** Whether a module spans every site or belongs to the organisation above them. */
+type ModuleScope = 'all' | 'org'
 
 interface SidebarItem {
   text: string
   description: string
   icon: JSX.Element
-  /** `:site` stands for the site you are in. */
   path: string
   module: Module
   group: ModuleGroup
   scope?: ModuleScope
-  /** Beyond seeing the module, what the person must be allowed to do. */
-  action?: PermissionAction
   /** Only this exact address counts as being here, not the pages under it. */
   exact?: boolean
-  /** Does something rather than go somewhere, so it is never "where you are". */
-  command?: boolean
   subItems?: { text: string; path: string }[]
 }
 
-const groupOrder: ModuleGroup[] = [
-  'All sites', 'Site', 'Inspections', 'Facility', 'Service', 'Compliance',
-  'Organisation', 'People', 'Commerce', 'Workspace',
-]
+const groupOrder: ModuleGroup[] = ['All sites', 'People', 'Commerce', 'Workspace']
 
 /** Groups whose section heading already says what they are. */
-const UNTITLED_GROUPS: ModuleGroup[] = ['All sites', 'Site', 'Organisation']
+const UNTITLED_GROUPS: ModuleGroup[] = ['All sites']
 
 const allMenuItems: SidebarItem[] = [
-  // ── every site ──
   { text: 'Sites', description: 'Every site: passed, failed, overdue', icon: <HomeRoundedIcon />, path: '/sites', module: 'facilities', group: 'All sites', scope: 'all', exact: true },
   { text: 'Inspection status', description: 'What passed, failed, is due or overdue', icon: <ListAltIcon />, path: '/inspection-status', module: 'inspections', group: 'All sites', scope: 'all' },
-  // ── this site, as its dashboard lays it out ──
-  { text: 'Dashboard', description: "This site's own dashboard", icon: <DashboardIcon />, path: '/sites/:site', module: 'facilities', group: 'Site', exact: true },
-  { text: 'People here', description: 'Everyone assigned to this site', icon: <PeopleOutlineIcon />, path: '/sites/:site?panel=people', module: 'facilities', group: 'Site', command: true },
-  { text: 'Departments', description: 'Each department, its items and what is due', icon: <DomainOutlinedIcon />, path: '/departments', module: 'inspections', group: 'Inspections' },
-  { text: 'Visits', description: 'Scheduled inspections and their results', icon: <EventAvailableIcon />, path: '/inspection-visits', module: 'inspections', group: 'Inspections' },
-  { text: 'Fleet', description: "This site's vehicles and their inspections", icon: <LocalShippingIcon />, path: '/fleet', module: 'inspections', group: 'Inspections' },
-  { text: 'Red tags', description: 'What is not up to standard, and what was done', icon: <ReportProblemOutlinedIcon />, path: '/red-tags', module: 'inspections', group: 'Inspections' },
-  { text: 'Inspection forms', description: 'Build the checklists departments are inspected on', icon: <DescriptionOutlinedIcon />, path: '/inspections', module: 'inspections', group: 'Inspections' },
-  ...CATEGORIES.map((category): SidebarItem => ({
-    text: category.name, description: `${category.name} equipment at this site`, icon: category.icon,
-    path: category.path, module: 'facility-inventory', group: 'Facility',
-  })),
-  { text: 'Asset Register', description: 'Every machine, its plan, history and value', icon: <PrecisionManufacturingIcon />, path: '/assets', module: 'facility-inventory', group: 'Facility' },
-  { text: 'Assets & Value', description: 'Cost, book value, and full history', icon: <AccountBalanceIcon />, path: '/asset-ledger', module: 'facility-inventory', group: 'Facility' },
-  { text: 'Parts & Spares', description: 'Sales and rental parts', icon: <InventoryIcon />, path: '/inventory', module: 'inventory', group: 'Facility' },
-  { text: 'Test Equipment', description: 'Global test equipment library', icon: <ScienceIcon />, path: '/test-equipment', module: 'test-equipment', group: 'Facility' },
-  // Inspect to keep things to standard, service when something is at fault:
-  // side by side, as on the site's dashboard.
-  { text: 'Inspection', description: 'Start an inspection now', icon: <PlaylistAddCheckIcon />, path: '/inspection-visits?new=1', module: 'inspections', group: 'Service', action: 'add', command: true },
-  { text: 'Service', description: 'Faults and malfunctions, assigned and costed', icon: <HomeRepairServiceIcon />, path: '/service', module: 'service-requests', group: 'Service' },
-  { text: 'Compliance', description: 'Regulatory schedules and certificates', icon: <FactCheckIcon />, path: '/compliance', module: 'compliance', group: 'Compliance' },
-  { text: 'Permits to Work', description: 'ICRA, ILSM, hot work, and shutdowns', icon: <VerifiedUserIcon />, path: '/permits', module: 'permits', group: 'Compliance' },
-  { text: 'Contractors', description: 'Contractors, contracts, and credentials', icon: <HandshakeIcon />, path: '/vendors', module: 'vendors', group: 'Compliance' },
-  // ── the organisation ──
-  { text: 'Business dashboard', description: 'Revenue, collections and alerts', icon: <InsightsIcon />, path: '/dashboard', module: 'dashboard', group: 'Organisation', scope: 'org' },
+  { text: 'Users', description: 'Users, roles, and permissions', icon: <PeopleIcon />, path: '/users', module: 'users', group: 'People', scope: 'org' },
+  { text: 'HR', description: 'Human resources management', icon: <GroupsIcon />, path: '/hr', module: 'hr', group: 'People', scope: 'org' },
+  { text: 'Attendance', description: 'Attendance and working hours', icon: <AccessTimeIcon />, path: '/attendance', module: 'attendance', group: 'People', scope: 'org' },
+  { text: 'My Timesheets', description: 'Personal time records', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets', group: 'People', scope: 'org' },
+  { text: 'My Leave', description: 'Personal leave requests', icon: <BeachAccessIcon />, path: '/my-leave', module: 'my-leave', group: 'People', scope: 'org' },
   {
     text: 'Sales', description: 'Quotations, invoices, and sales', icon: <ShoppingCartIcon />, path: '/sales/quotations', module: 'sales', group: 'Commerce', scope: 'org',
     subItems: [
@@ -134,11 +80,6 @@ const allMenuItems: SidebarItem[] = [
     ],
   },
   { text: 'Billing', description: 'Invoices, payments, and ledgers', icon: <PaymentIcon />, path: '/billing', module: 'billing', group: 'Commerce', scope: 'org' },
-  { text: 'Users', description: 'Users, roles, and permissions', icon: <PeopleIcon />, path: '/users', module: 'users', group: 'People', scope: 'org' },
-  { text: 'HR', description: 'Human resources management', icon: <GroupsIcon />, path: '/hr', module: 'hr', group: 'People', scope: 'org' },
-  { text: 'Attendance', description: 'Attendance and working hours', icon: <AccessTimeIcon />, path: '/attendance', module: 'attendance', group: 'People', scope: 'org' },
-  { text: 'My Timesheets', description: 'Personal time records', icon: <TimerIcon />, path: '/my-timesheets', module: 'my-timesheets', group: 'People', scope: 'org' },
-  { text: 'My Leave', description: 'Personal leave requests', icon: <BeachAccessIcon />, path: '/my-leave', module: 'my-leave', group: 'People', scope: 'org' },
   { text: 'Reports', description: 'Service and inspection reporting', icon: <AssessmentIcon />, path: '/reports', module: 'reports', group: 'Workspace', scope: 'org' },
   { text: 'Chat', description: 'Team and facility conversations', icon: <ChatBubbleIcon />, path: '/chat', module: 'chat', group: 'Workspace', scope: 'org' },
   { text: 'Calendar', description: 'Schedules and shared events', icon: <CalendarMonthIcon />, path: '/calendar', module: 'calendar', group: 'Workspace', scope: 'org' },
@@ -156,18 +97,14 @@ const Sidebar = () => {
   const { facility } = useActiveFacility()
   const visibleModules = getVisibleModules(user)
   const menuItems = useMemo(
-    () => allMenuItems.filter((item) => visibleModules.includes(item.module)
-      && (!item.action || hasPermission(user, item.module, item.action))),
-    [visibleModules, user],
+    () => allMenuItems.filter((item) => visibleModules.includes(item.module)),
+    [visibleModules],
   )
 
-  /** Where an item goes, with `:site` read as the site you are in. */
-  const pathFor = (item: SidebarItem) =>
-    facility ? item.path.replace(':site', String(facility.id)) : item.path
+  const pathFor = (item: SidebarItem) => item.path
 
   const isActive = (item: SidebarItem) => {
-    if (item.command) return false
-    const path = pathFor(item).split('?')[0]
+    const path = item.path
     if (item.exact) return location.pathname === path
     if (item.subItems) {
       return item.subItems.some((subItem) => (
@@ -189,16 +126,15 @@ const Sidebar = () => {
     .map((group) => ({
       group,
       items: filteredItems.filter(
-        (item) => item.group === group && (item.scope ?? 'site') === scope,
+        (item) => item.group === group && (item.scope ?? 'org') === scope,
       ),
     }))
     .filter(({ items }) => items.length > 0)
 
   const allSiteGroups = groupsOf('all')
-  const siteGroups = facility ? groupsOf('site') : []
   const orgGroups = groupsOf('org')
   // Used only for the empty-search message, so it still reflects everything.
-  const groupedItems = [...allSiteGroups, ...siteGroups, ...orgGroups]
+  const groupedItems = [...allSiteGroups, ...orgGroups]
 
   const closeLauncher = () => {
     setLauncherOpen(false)
@@ -235,9 +171,7 @@ const Sidebar = () => {
   }, [launcherOpen])
 
   /** Groups whose items should collapse under a dropdown toggle. */
-  const COLLAPSIBLE_GROUPS: ModuleGroup[] = [
-    'Inspections', 'Facility', 'Compliance', 'People', 'Commerce', 'Workspace',
-  ]
+  const COLLAPSIBLE_GROUPS: ModuleGroup[] = ['People', 'Commerce', 'Workspace']
 
   useEffect(() => {
     if (launcherOpen && currentItem && COLLAPSIBLE_GROUPS.includes(currentItem.group)) {
@@ -540,7 +474,7 @@ const Sidebar = () => {
                   <Box sx={{ mt: 0.25, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                     <Typography sx={{ fontSize: '0.78rem', color: '#7B8497', fontWeight: 600 }}>
                       {facility
-                        ? (currentItem ? `Currently in ${currentItem.text}` : 'Choose your workspace')
+                        ? (currentItem ? `Currently in ${currentItem.text}` : 'Its screens are in the bar under the page title')
                         : 'Open a hospital to work in it'}
                     </Typography>
                     {facility && (
@@ -602,7 +536,6 @@ const Sidebar = () => {
             >
               {([
                 ['All sites', allSiteGroups],
-                ['This site', siteGroups],
                 ['Organisation', orgGroups],
               ] as const).filter(([, groups]) => groups.length > 0).map(([title, groups], index) => (
                 <Box key={title} sx={index ? { mt: 0.5, pt: 1.75, borderTop: `1px solid ${palette.borderSoft}` } : {}}>

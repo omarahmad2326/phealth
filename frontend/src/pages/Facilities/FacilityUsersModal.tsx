@@ -66,13 +66,17 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
   const isSuperAdmin = currentUser?.role === 'superadmin'
   const [selectedUser, setSelectedUser] = useState<FacilityUser | null>(null)
   const [selectedRole, setSelectedRole] = useState<'facility_admin' | 'facility_manager'>('facility_manager')
+  // What the box shows and what is searched for are two things: picking
+  // somebody puts their name in the box without searching for that name.
   const [candidateSearch, setCandidateSearch] = useState('')
+  const [candidateText, setCandidateText] = useState('')
 
   useEffect(() => {
     if (!open) return
     setSelectedUser(null)
     setSelectedRole('facility_manager')
     setCandidateSearch('')
+    setCandidateText('')
   }, [facility?.id, open])
 
   // Everyone assigned to this site - here as their main site or as an
@@ -96,6 +100,8 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
     onSuccess: () => {
       toast.success('Facility role updated')
       setSelectedUser(null)
+      setCandidateText('')
+      setCandidateSearch('')
       queryClient.invalidateQueries({ queryKey: ['facility-managers', facility?.id] })
       queryClient.invalidateQueries({ queryKey: ['facility-manager-candidates', facility?.id] })
       queryClient.invalidateQueries({ queryKey: ['facilities'] })
@@ -246,10 +252,14 @@ const FacilityUsersModal = ({ open, onClose, facility }: Props) => {
                 loading={candidateUsersLoading}
                 value={selectedUser}
                 onChange={(_, value) => setSelectedUser(value)}
-                inputValue={candidateSearch}
+                inputValue={candidateText}
                 onInputChange={(_, value, reason) => {
+                  setCandidateText(value)
+                  // Typing searches; picking somebody only shows their name.
                   if (reason !== 'reset') setCandidateSearch(value)
                 }}
+                // The server has already searched name, email and username.
+                filterOptions={(options) => options}
                 getOptionLabel={(option) => `${option.full_name} (${roleLabel(option.role)})`}
                 isOptionEqualToValue={(option, value) => option.id === value.id}
                 renderInput={(params) => (
