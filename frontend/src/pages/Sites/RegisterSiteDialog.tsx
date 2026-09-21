@@ -37,7 +37,7 @@ export default function RegisterSiteDialog({ open, onClose, onCreated }: {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
     name: '', address: '', suite: '', city: '', state: '', zip_code: '',
-    country: 'USA', phone: '', email: '', contact_person: '',
+    country: 'Pakistan', phone: '', email: '', contact_person: '',
     timezone: 'America/New_York',
   })
 
@@ -71,7 +71,7 @@ export default function RegisterSiteDialog({ open, onClose, onCreated }: {
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth
             PaperProps={{ sx: { borderRadius: '18px' } }}>
       <DialogTitle sx={{ fontWeight: 900, color: palette.ink, pb: 0.5 }}>
-        Register a hospital
+        Register a Site
       </DialogTitle>
       <DialogContent dividers>
         <Typography sx={{ mb: 2, fontSize: 12.5, color: palette.textMuted, fontWeight: 600 }}>
@@ -81,9 +81,9 @@ export default function RegisterSiteDialog({ open, onClose, onCreated }: {
 
         <Box sx={{ display: 'grid', gap: 1.75 }}>
           <TextField
-            autoFocus size="small" label="Hospital name" required
+            autoFocus size="small" label="Site Name" required
             value={form.name} onChange={set('name')}
-            placeholder="Medpro Regional Medical Center"
+            placeholder="Services Hospital, Lahore"
           />
 
           <Divider textAlign="left">
@@ -105,7 +105,7 @@ export default function RegisterSiteDialog({ open, onClose, onCreated }: {
           <Box sx={{ display: 'grid', gap: 1.75,
                      gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(3, 1fr)' } }}>
             <TextField size="small" label="State" required
-                       value={form.state} onChange={set('state')} placeholder="GA" />
+                       value={form.state} onChange={set('state')} placeholder="Punjab" />
             <TextField size="small" label="ZIP" required
                        value={form.zip_code} onChange={set('zip_code')} />
             <TextField size="small" label="Country" required
@@ -123,7 +123,7 @@ export default function RegisterSiteDialog({ open, onClose, onCreated }: {
                      gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
             <TextField size="small" label="Main phone" required
                        value={form.phone} onChange={set('phone')}
-                       placeholder="(404) 555-0142" />
+                       placeholder="042 1234567" />
             <TextField size="small" label="Facilities email" required type="email"
                        value={form.email} onChange={set('email')} />
             <TextField size="small" label="Contact person (optional)"

@@ -138,12 +138,18 @@ export default function SitesPage() {
         direction={{ xs: 'column', sm: 'row' }}
         sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' }, gap: 1.5, mb: 2.5 }}
       >
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h4" sx={{ fontWeight: 900, color: palette.ink }}>Sites</Typography>
-          <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>
-            The hospitals you run. Open one to work in it.
-          </Typography>
-        </Box>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
+          <Box
+            component="img" src="/punjab-logo.png" alt="Government of the Punjab"
+            sx={{ width: { xs: 56, sm: 72 }, height: { xs: 56, sm: 72 }, flexShrink: 0, objectFit: 'contain' }}
+          />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h4" sx={{ fontWeight: 900, color: palette.ink }}>Punjab Health - Sites</Typography>
+            <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>
+              The hospitals you run. Open one to work in it.
+            </Typography>
+          </Box>
+        </Stack>
         {canAdd && (
           <Button
             variant="contained" startIcon={<AddIcon />}

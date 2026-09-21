@@ -48,7 +48,7 @@ function useDismissOrphanedOverlays(pathname: string) {
 
 const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
-  '/sites': 'Sites',
+  '/sites': 'Punjab Health - Sites',
   '/dashboard': 'Business dashboard',
   '/assets': 'Asset Register',
   '/categories': 'Facility',
