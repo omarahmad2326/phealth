@@ -192,7 +192,7 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
 
     guides = {doc.doc_id: doc for doc in guide_documents()}
     assert set(guides) == {"guide.site_categories", "guide.inspections", "guide.service"}
-    for words in ("Add equipment", "Where is it?", "Building", "Room / exact spot", "Out of service",
+    for words in ("Add equipment", "Under Department", "Not in a department", "Out of service",
                   "Open Facility and choose", "Cost & value", "In service since", "Useful life", "Book value today",
                   "View asset & value history", "Add to a category", "$38,250", "Inspections and PM", "Open site"):
         assert words in guides["guide.site_categories"].body, words
@@ -217,7 +217,7 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
                           ("Categories", "Service", "Departments", "InspectionVisits", "Fleet", "RedTags", "InspectionStatus", "Sites",
                            "Inspections/programme")
                           for page in (pages / folder).glob("*.tsx"))
-        for label in ("Add equipment", "Where is it?", "Room / exact spot", "What needs doing", "Assigned to",
+        for label in ("Add equipment", "Not in a department", "All departments", "What needs doing", "Assigned to",
                       "Cost & value", "In service since", "Useful life", "Book value today",
                       "View asset & value history", "Add to a category", "Labour", "Parts",
                       "Major work that extends its life", "Inspections and PM", "Add department", "Assign items",

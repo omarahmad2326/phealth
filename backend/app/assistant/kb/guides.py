@@ -31,11 +31,11 @@ Open the site from Sites. Four cards at the top count sites: Passed (something h
 1. Open the category, for example Facility > Electrical.
 2. Press Add equipment.
 3. Fill in Name (for example Generator 1) and Type. Type offers a list for the category - Generator, Transformer, Main switchboard, Distribution board, UPS, Transfer switch, Lighting, Earthing for Electrical - and you can type your own.
-4. Under Where is it?, fill in Building (required), Floor and Room / exact spot, for example Main block, Basement, Plant room 2 north wall. Places already used at the site are suggested as you type.
+4. Under Department, choose the department it belongs to - Radiology, Theatre, Pharmacy - or Not in a department. The department's inspection forms are shown beneath it. Building, floor and room are no longer asked for; older equipment keeps what it recorded.
 5. Set Quantity and Status: Working, Needs attention or Out of service. Make and Model are optional.
 6. Under Cost & value, enter the Purchase cost (the Cost of one item when the quantity is more than one - the total is worked out), In service since, and Useful life. Useful life is filled in from the category.
 7. The form shows the Book value today and how much it Depreciates a year as you type.
-8. Under Inspections and PM, choose the Department that answers for it - Radiology, Theatre, Pharmacy - and how often it is inspected: Monthly, Quarterly, Every 6 months, Annually, or Custom with its own number of days. The frequency is filled in from the department, and First due is worked out from the frequency unless you give a date. Maintenance raised when it falls due and Assigned to are optional.
+8. Under Inspections and PM, choose how often it is inspected: Monthly, Quarterly, Every 6 months, Annually, or Custom with its own number of days. The frequency is filled in from the department, and First due is worked out from the frequency unless you give a date. Maintenance raised when it falls due and Assigned to are optional.
 9. Press Add equipment. It is given the site's next asset tag automatically.
 
 An item keeps its category and its department at the same time: a chiller is HVAC work and Radiology's problem. It shows in the category list, in its department, and in the Asset Register.
@@ -48,10 +48,10 @@ Routine service costs are maintenance spend: they do not change the book value. 
 Click the row to open it, change anything and press Save. When editing, the form also shows Maintenance spend and Cost of ownership, and View asset & value history opens the same record in the Asset Register. Category can be changed to move equipment put in the wrong category. Remove deletes equipment entered by mistake; equipment that already has jobs cannot be removed - set its Status to Out of service instead.
 
 ## Find equipment
-Each category list can be searched by name, type, tag or place, and filtered by Building, Floor and Status. The list shows where each item is, how many there are, its status, its Book value, when its next service is due and how many jobs are open on it.
+Each category list can be searched by name, type or tag, and filtered by Department (including Not in a department) and Status. The list shows each item's department, how many there are, its status, its Book value, when its next service is due and how many jobs are open on it.
 
 ## Assets already in the Asset Register
-Equipment under Facility is the same record as in the Asset Register, which shows it by name, category and place. An older asset that is not in a category has an Add to a category button in the Asset Register: choose the category, give it a name and type, and say where it is. It keeps its tag, cost and history.""",
+Equipment under Facility is the same record as in the Asset Register, which shows it by name, category and place. An older asset that is not in a category has an Add to a category button in the Asset Register: choose the category, give it a name and type, and choose its Department. It keeps its tag, cost and history.""",
     ),
     (
         "guide.inspections",

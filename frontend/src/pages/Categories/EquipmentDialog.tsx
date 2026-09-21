@@ -1,9 +1,9 @@
 /**
  * Add or edit one piece of equipment in a category.
  *
- * Name, type and building are all that is required. Where exactly it is is
- * typed, not picked from a building set-up, and places already used at the site
- * are suggested so "Main block" is spelled the same way every time.
+ * Name and type are all that is required. It is placed by the department it
+ * belongs to - which is also who inspects it - rather than by building, floor
+ * and room; what older equipment already records about where it is stays.
  */
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -16,7 +16,7 @@ import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlin
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
 import { toast } from 'react-toastify'
 import {
-  addCategoryEquipment, deleteCategoryEquipment, errorMessage, fetchPlaceSuggestions, fetchValuePreview,
+  addCategoryEquipment, deleteCategoryEquipment, errorMessage, fetchValuePreview,
   formatMoney, updateCategoryEquipment, type CategoryCode, type CategoryEquipment, type Condition,
   type ValuePreview,
 } from '@/api/siteCategories'
@@ -57,6 +57,31 @@ export function Suggesting({ label, value, onChange, options, required, placehol
         <TextField {...params} label={label} required={required} placeholder={placeholder} autoFocus={autoFocus} />
       )}
     />
+  )
+}
+
+/** Which department a piece of equipment belongs to, or none. */
+export function DepartmentField({ value, onChange, departments, loading }: {
+  value: number | ''
+  onChange: (value: number | '') => void
+  departments: Array<{ id: number | null; name: string }>
+  loading?: boolean
+}) {
+  const rows = departments.filter((row) => row.id !== null)
+  return (
+    <TextField
+      select size="small" fullWidth label="Department" value={value}
+      onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+      InputLabelProps={{ shrink: true }} SelectProps={{ displayEmpty: true }}
+      helperText={loading ? 'Loading departments…' : rows.length
+        ? 'The department it belongs to. It keeps its trade as well.'
+        : 'No departments yet — add one under Inspections first.'}
+    >
+      <MenuItem value="">Not in a department</MenuItem>
+      {rows.map((row) => (
+        <MenuItem key={row.id} value={row.id as number}>{row.name}</MenuItem>
+      ))}
+    </TextField>
   )
 }
 
@@ -130,9 +155,6 @@ export default function EquipmentDialog({
   const [code, setCode] = useState<CategoryCode>(item?.category ?? category)
   const [name, setName] = useState(item?.name ?? '')
   const [type, setType] = useState(item?.type ?? '')
-  const [building, setBuilding] = useState(item?.building ?? '')
-  const [floor, setFloor] = useState(item?.floor ?? '')
-  const [spot, setSpot] = useState(item?.spot ?? '')
   const [quantity, setQuantity] = useState(String(item?.quantity ?? 1))
   const [condition, setCondition] = useState<Condition>(item?.condition ?? 'working')
   const [make, setMake] = useState(item?.make ?? '')
@@ -202,12 +224,6 @@ export default function EquipmentDialog({
     placeholderData: (previous) => previous,
   })
 
-  const { data: places } = useQuery({
-    queryKey: ['place-suggestions', facilityId],
-    queryFn: () => fetchPlaceSuggestions(facilityId),
-    staleTime: 60_000,
-  })
-
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['category-equipment'] })
     queryClient.invalidateQueries({ queryKey: ['category-overview'] })
@@ -222,13 +238,12 @@ export default function EquipmentDialog({
   const count = Math.floor(Number(quantity))
   const costValid = unitCost === '' || Number(unitCost) >= 0
   const lifeValid = life === '' || (Number(life) > 0 && Number(life) <= 100)
-  const ready = name.trim() && type.trim() && building.trim() && count >= 1 && costValid && lifeValid
+  const ready = name.trim() && type.trim() && count >= 1 && costValid && lifeValid
 
   const save = useMutation({
     mutationFn: () => {
       const payload = {
-        name: name.trim(), type: type.trim(), building: building.trim(),
-        floor: floor.trim() || null, spot: spot.trim() || null,
+        name: name.trim(), type: type.trim(),
         quantity: count, condition,
         make: make.trim() || null, model: model.trim() || null, notes: notes.trim() || null,
         unit_cost: figures.unit_cost, in_service_on: figures.in_service_on,
@@ -292,17 +307,14 @@ export default function EquipmentDialog({
           )}
         </Box>
 
-        <Section title="Where is it?">
-          <Box sx={{ display: 'grid', gap: 1.75, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' } }}>
-            <Suggesting label="Building" required value={building} onChange={setBuilding}
-                        options={places?.buildings ?? []} placeholder="Main block" />
-            <Suggesting label="Floor" value={floor} onChange={setFloor}
-                        options={places?.floors ?? []} placeholder="Basement" />
-          </Box>
-          <Box sx={{ mt: 1.75 }}>
-            <Suggesting label="Room / exact spot" value={spot} onChange={setSpot}
-                        options={places?.spots ?? []} placeholder="Plant room 2, north wall" />
-          </Box>
+        <Section title="Department">
+          <DepartmentField value={departmentId} onChange={setDepartmentId} departments={departmentRows}
+                           loading={departments.isLoading} />
+          {departmentForms.length > 0 && (
+            <Typography sx={{ mt: 0.75, fontSize: 12, fontWeight: 700, color: palette.textMuted }}>
+              Inspected on {departmentForms.map((form) => form.name).join(', ')}
+            </Typography>
+          )}
         </Section>
 
         <Section title="Details">
@@ -361,24 +373,6 @@ export default function EquipmentDialog({
         </Section>
 
         <Section title="Inspections and PM">
-          <TextField
-            select size="small" label="Department" value={departmentId} sx={{ mb: 1.4 }}
-            onChange={(e) => setDepartmentId(e.target.value === '' ? '' : Number(e.target.value))}
-            InputLabelProps={{ shrink: true }} SelectProps={{ displayEmpty: true }}
-            helperText={departmentRows.length
-              ? 'Who answers for it. It keeps its trade as well.'
-              : 'No departments yet — add one under Inspections first.'}
-          >
-            <MenuItem value="">Not in a department</MenuItem>
-            {departmentRows.map((row) => (
-              <MenuItem key={row.id} value={row.id as number}>{row.name}</MenuItem>
-            ))}
-          </TextField>
-          {departmentForms.length > 0 && (
-            <Typography sx={{ mb: 1.2, fontSize: 12, fontWeight: 700, color: palette.textMuted }}>
-              Inspected on {departmentForms.map((form) => form.name).join(', ')}
-            </Typography>
-          )}
           <Box sx={{ display: 'grid', gap: 1.4, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, mb: 1.4 }}>
             <FrequencyFields
               frequency={frequency} intervalDays={intervalDays}

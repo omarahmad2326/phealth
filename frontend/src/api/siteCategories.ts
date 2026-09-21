@@ -89,9 +89,10 @@ export interface ValuePreview {
 export interface CategoryEquipmentInput {
   name: string
   type: string
-  building: string
-  floor: string | null
-  spot: string | null
+  /** No longer asked for: equipment is placed by its department. Kept for what has it. */
+  building?: string | null
+  floor?: string | null
+  spot?: string | null
   quantity: number
   condition: Condition
   make: string | null
@@ -190,7 +191,8 @@ export const fetchCategoryOverview = async (facilityId: number): Promise<{ categ
 export const fetchCategoryEquipment = async (
   code: CategoryCode,
   facilityId: number,
-  filters: { search?: string; building?: string; floor?: string; condition?: string } = {},
+  /** department: a department's id, or 'none' for items in no department. */
+  filters: { search?: string; building?: string; floor?: string; department?: string; condition?: string } = {},
 ): Promise<{
   category: { code: CategoryCode; name: string; types: string[]; default_useful_life_years: number }
   items: CategoryEquipment[]
@@ -247,7 +249,7 @@ export const fetchValuePreview = async (params: {
 /** Bring an asset from the register into a category, keeping its tag, cost and history. */
 export const adoptIntoCategory = async (
   code: CategoryCode, equipmentId: number,
-  payload: { name: string; type: string; building: string; floor: string | null; spot: string | null },
+  payload: { name: string; type: string; department_id: number | null },
 ): Promise<CategoryEquipment> => {
   const res = await apiClient.post(`/site-categories/${code}/adopt/${equipmentId}`, payload)
   return res.data

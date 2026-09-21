@@ -97,9 +97,10 @@ def overview(db, user, site):
     return api.overview(facility_id=site.id, db=db, current_user=user)
 
 
-def listing(db, user, site, code, search=None, building=None, floor=None, condition=None):
+def listing(db, user, site, code, search=None, building=None, floor=None, condition=None, department=None):
     return api.list_category_equipment(code, facility_id=site.id, search=search, building=building,
-                                       floor=floor, condition=condition, db=db, current_user=user)
+                                       floor=floor, department=department, condition=condition,
+                                       db=db, current_user=user)
 
 
 def add(db, user, site, code, **fields):
@@ -161,6 +162,52 @@ def test_equipment_is_added_with_a_tag_and_where_exactly_it_is():
     print("ok  equipment gets a tag, a tidy name and one spelling per building and floor")
 
 
+def test_equipment_is_placed_by_its_department_not_where_it_is():
+    """The form asks which department, not which building: a name and a type
+    are all that is required, and the list is filtered by department."""
+    from app.models.department import Department
+    from app.models.equipment import Equipment
+    from app.schemas.site_categories import CategoryAdopt
+
+    db, site, far, people = build()
+    radiology = Department(name="Radiology", facility_id=site.id)
+    elsewhere = Department(name="Wards", facility_id=far.id)
+    db.add_all([radiology, elsewhere])
+    db.commit()
+
+    xray = add(db, people["manager"], site, "electrical", name="X-ray 1", type="X-ray", building=None,
+               department_id=radiology.id)
+    assert (xray["department_id"], xray["department"]) == (radiology.id, "Radiology")
+    assert xray["building"] is None and xray["location_label"] in (None, ""), "no building asked, none invented"
+    loose = add(db, people["manager"], site, "electrical", name="Generator 1", type="Generator", building=None)
+    assert loose["department"] is None
+
+    def names(**filters):
+        return [i["name"] for i in listing(db, people["tech"], site, "electrical", **filters)["items"]]
+
+    assert names(department=str(radiology.id)) == ["X-ray 1"]
+    assert names(department="none") == ["Generator 1"]
+    refused(lambda: names(department="radiology"), 422)
+    refused(lambda: add(db, people["manager"], site, "electrical", name="Z", type="Z", building=None,
+                        department_id=elsewhere.id), 422)
+
+    # Editing never asks for a building either, and what one had is kept.
+    placed = add(db, people["manager"], site, "electrical", name="UPS 1", type="UPS", building="Main block")
+    edited = api.update_category_equipment(placed["id"], CategoryEquipmentUpdate(
+        department_id=radiology.id), db=db, current_user=people["manager"])
+    assert (edited["department"], edited["building"]) == ("Radiology", "Main block")
+
+    # An older asset joins a category by its department.
+    old = Equipment(facility_id=site.id, asset_tag="OLD-1", make="M", model="M", serial_number="S")
+    db.add(old)
+    db.commit()
+    joined = api.adopt_into_category("electrical", old.id, CategoryAdopt(
+        name="Old panel", type="Distribution board", department_id=radiology.id), db=db, current_user=people["manager"])
+    assert (joined["name"], joined["department"]) == ("Old panel", "Radiology")
+    db.close()
+    print("ok  equipment needs only a name and a type, and is placed and filtered by its department")
+
+
 def test_the_lists_start_empty_and_only_show_their_own_category():
     db, site, _, people = build()
     ids = {c["code"]: c for c in overview(db, people["admin"], site)["categories"]}
@@ -194,7 +241,7 @@ def test_a_list_can_be_searched_and_filtered_by_place_and_condition():
     def names(**filters):
         return [i["name"] for i in listing(db, people["tech"], site, "plumbing", **filters)["items"]]
 
-    assert names() == ["Pump A", "Tank 1", "Heater"], "ordered by building, then floor"
+    assert names() == ["Heater", "Pump A", "Tank 1"], "in name order"
     assert names(search="tank") == ["Tank 1"]
     assert names(search="opd") == ["Heater"]
     assert names(building="MAIN BLOCK", floor="roof") == ["Tank 1"]

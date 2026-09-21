@@ -92,7 +92,7 @@ def add(db, site, user, code="electrical", **fields):
 
 def listed(db, site, user, code="electrical"):
     return {i["id"]: i for i in api.list_category_equipment(
-        code, facility_id=site.id, search=None, building=None, floor=None, condition=None,
+        code, facility_id=site.id, search=None, building=None, floor=None, department=None, condition=None,
         db=db, current_user=user)["items"]}
 
 

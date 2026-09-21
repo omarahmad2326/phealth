@@ -28,7 +28,9 @@ class CategoryEquipmentCreate(BaseModel):
     facility_id: int
     name: str = Field(..., min_length=1, max_length=160)
     type: str = Field(..., min_length=1, max_length=80)
-    building: str = Field(..., min_length=1, max_length=120)
+    # Equipment is placed by its department now. Building, floor and room are
+    # no longer asked for on screen; they are kept for what already has them.
+    building: Optional[str] = Field(None, max_length=120)
     floor: Optional[str] = Field(None, max_length=80)
     spot: Optional[str] = Field(None, max_length=255)
     quantity: int = Field(1, ge=1, le=100000)
@@ -58,7 +60,7 @@ class CategoryEquipmentUpdate(BaseModel):
     category: Optional[CategoryCode] = None
     name: Optional[str] = Field(None, min_length=1, max_length=160)
     type: Optional[str] = Field(None, min_length=1, max_length=80)
-    building: Optional[str] = Field(None, min_length=1, max_length=120)
+    building: Optional[str] = Field(None, max_length=120)
     floor: Optional[str] = Field(None, max_length=80)
     spot: Optional[str] = Field(None, max_length=255)
     quantity: Optional[int] = Field(None, ge=1, le=100000)
@@ -79,11 +81,12 @@ class CategoryEquipmentUpdate(BaseModel):
 
 
 class CategoryAdopt(BaseModel):
-    """An older asset joining a category: what it is called and where it is.
+    """An older asset joining a category: what it is called and its department.
     Its tag, cost and history stay as they are."""
     name: str = Field(..., min_length=1, max_length=160)
     type: str = Field(..., min_length=1, max_length=80)
-    building: str = Field(..., min_length=1, max_length=120)
+    department_id: Optional[int] = None
+    building: Optional[str] = Field(None, max_length=120)
     floor: Optional[str] = Field(None, max_length=80)
     spot: Optional[str] = Field(None, max_length=255)
 

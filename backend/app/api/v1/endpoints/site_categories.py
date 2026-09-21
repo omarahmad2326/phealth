@@ -174,6 +174,7 @@ def list_category_equipment(
     search: Optional[str] = Query(None),
     building: Optional[str] = Query(None),
     floor: Optional[str] = Query(None),
+    department: Optional[str] = Query(None, description="A department's id, or 'none' for items in none"),
     condition: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -188,6 +189,13 @@ def list_category_equipment(
         query = query.filter(func.lower(Equipment.building) == building.strip().lower())
     if floor:
         query = query.filter(func.lower(Equipment.floor) == floor.strip().lower())
+    if department:
+        if department == "none":
+            query = query.filter(Equipment.department_id.is_(None))
+        elif department.isdigit():
+            query = query.filter(Equipment.department_id == int(department))
+        else:
+            raise HTTPException(status_code=422, detail="department is a department's id, or 'none'")
     if condition:
         if condition not in site_categories.CONDITIONS:
             raise HTTPException(status_code=422, detail="Unknown condition")
@@ -200,9 +208,7 @@ def list_category_equipment(
             Equipment.make.ilike(like), Equipment.model.ilike(like),
         ))
 
-    rows = query.order_by(
-        func.lower(Equipment.building), func.lower(Equipment.floor), func.lower(Equipment.name), Equipment.id,
-    ).all()
+    rows = query.order_by(func.lower(Equipment.name), Equipment.id).all()
     facts = site_categories.job_facts(db, [row.id for row in rows])
     values = site_categories.value_facts(db, rows)
     from app.models.department import Department
@@ -237,8 +243,8 @@ def add_category_equipment(
 
     name, kind = site_categories.tidy(payload.name), site_categories.tidy(payload.type)
     building = site_categories.match_existing_spelling(db, facility.id, "building", payload.building)
-    if not (name and kind and building):
-        raise HTTPException(status_code=422, detail="Name, type and building are required")
+    if not (name and kind):
+        raise HTTPException(status_code=422, detail="Name and type are required")
 
     asset = Equipment(
         facility_id=facility.id,
@@ -292,10 +298,8 @@ def update_category_equipment(
                 raise HTTPException(status_code=422, detail=f"{field.capitalize()} cannot be blank")
             setattr(asset, column, value)
     if "building" in changes:
-        building = site_categories.match_existing_spelling(db, asset.facility_id, "building", changes["building"])
-        if not building:
-            raise HTTPException(status_code=422, detail="Building cannot be blank")
-        asset.building = building
+        asset.building = site_categories.match_existing_spelling(
+            db, asset.facility_id, "building", changes["building"])
     if "floor" in changes:
         asset.floor = site_categories.match_existing_spelling(db, asset.facility_id, "floor", changes["floor"])
     if "spot" in changes:
@@ -348,12 +352,18 @@ def adopt_into_category(
         raise HTTPException(status_code=409, detail=f"{asset.asset_tag} is already in a category as {asset.name}")
 
     name, kind = site_categories.tidy(payload.name), site_categories.tidy(payload.type)
-    building = site_categories.match_existing_spelling(db, asset.facility_id, "building", payload.building)
-    if not (name and kind and building):
-        raise HTTPException(status_code=422, detail="Name, type and building are required")
+    if not (name and kind):
+        raise HTTPException(status_code=422, detail="Name and type are required")
+    department = _department_or_422(db, current_user, asset.facility_id, payload.department_id)
     asset.discipline_id = site_categories.ensure_disciplines(db)[category.code]
-    asset.name, asset.equipment_type, asset.building = name, kind, building
-    asset.floor = site_categories.match_existing_spelling(db, asset.facility_id, "floor", payload.floor)
+    asset.name, asset.equipment_type = name, kind
+    if department is not None:
+        asset.department_id = department.id
+    # Where it is, only if given: what the register already knew stays.
+    if payload.building:
+        asset.building = site_categories.match_existing_spelling(db, asset.facility_id, "building", payload.building)
+    if payload.floor:
+        asset.floor = site_categories.match_existing_spelling(db, asset.facility_id, "floor", payload.floor)
     if payload.spot is not None:
         asset.location = site_categories.tidy(payload.spot)
     asset.quantity = asset.quantity or 1

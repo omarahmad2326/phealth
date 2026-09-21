@@ -2,7 +2,7 @@
  * Bring an asset from the register into a Facility Category.
  *
  * It keeps its tag, cost, dates and history; it gains a name, a category and
- * where exactly it is, so it shows in Electrical, Plumbing, Mechanical or HVAC
+ * its department, so it shows in Electrical, Plumbing, Mechanical or HVAC
  * alongside everything entered there, without typing it in again.
  */
 import { useState } from 'react'
@@ -13,12 +13,13 @@ import {
 } from '@mui/material'
 import { toast } from 'react-toastify'
 import {
-  adoptIntoCategory, errorMessage, fetchCategoryOverview, fetchPlaceSuggestions, type CategoryCode,
+  adoptIntoCategory, errorMessage, fetchCategoryOverview, type CategoryCode,
 } from '@/api/siteCategories'
+import { fetchProgrammeDepartments } from '@/api/inspectionProgramme'
 import { CATEGORIES, CATEGORIES_LABEL } from '@/config/siteCategories'
 import { palette } from '@/theme/palette'
 import { assetTitle } from '../Assets/assetTitle'
-import { Section, Suggesting } from './EquipmentDialog'
+import { DepartmentField, Section, Suggesting } from './EquipmentDialog'
 
 const TRADE_TO_CATEGORY: Record<string, CategoryCode> = {
   electrical: 'electrical', plumbing: 'plumbing', mechanical: 'mechanical', hvac: 'hvac',
@@ -39,31 +40,28 @@ export default function AdoptDialog({ asset, tradeCode, onClose }: {
   const suggestedName = assetTitle(asset) === '—' ? asset.asset_tag : assetTitle(asset)
   const [name, setName] = useState(suggestedName)
   const [type, setType] = useState(asset.type_label ?? '')
-  const [building, setBuilding] = useState('')
-  const [floor, setFloor] = useState('')
-  const [spot, setSpot] = useState(asset.location ?? '')
+  const [departmentId, setDepartmentId] = useState<number | ''>(asset.department_id ?? '')
 
   const { data: overview } = useQuery({
     queryKey: ['category-overview', facilityId],
     queryFn: () => fetchCategoryOverview(facilityId),
     staleTime: 60_000,
   })
-  const { data: places } = useQuery({
-    queryKey: ['place-suggestions', facilityId],
-    queryFn: () => fetchPlaceSuggestions(facilityId),
+  const departments = useQuery({
+    queryKey: ['programme-departments', facilityId],
+    queryFn: () => fetchProgrammeDepartments(facilityId),
     staleTime: 60_000,
   })
   const types = overview?.categories.find((c) => c.code === category)?.types ?? []
-  const ready = name.trim() && type.trim() && building.trim()
+  const ready = name.trim() && type.trim()
 
   const adopt = useMutation({
     mutationFn: () => adoptIntoCategory(category, asset.id, {
-      name: name.trim(), type: type.trim(), building: building.trim(),
-      floor: floor.trim() || null, spot: spot.trim() || null,
+      name: name.trim(), type: type.trim(), department_id: departmentId === '' ? null : Number(departmentId),
     }),
     onSuccess: (saved) => {
       toast.success(`${saved.asset_tag} is now ${saved.name} in ${saved.category_name}`)
-      ;['equipment', 'category-equipment', 'category-overview', 'place-suggestions']
+      ;['equipment', 'category-equipment', 'category-overview', 'programme-departments', 'inspection-dashboard']
         .forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }))
       onClose()
     },
@@ -92,15 +90,9 @@ export default function AdoptDialog({ asset, tradeCode, onClose }: {
           <Suggesting label="Type" required value={type} onChange={setType} options={types}
                       placeholder="Pick or type your own" />
         </Box>
-        <Section title="Where is it?">
-          <Box sx={{ display: 'grid', gap: 1.75, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' } }}>
-            <Suggesting label="Building" required value={building} onChange={setBuilding}
-                        options={places?.buildings ?? []} placeholder="Main block" />
-            <Suggesting label="Floor" value={floor} onChange={setFloor} options={places?.floors ?? []} />
-          </Box>
-          <Box sx={{ mt: 1.75 }}>
-            <Suggesting label="Room / exact spot" value={spot} onChange={setSpot} options={places?.spots ?? []} />
-          </Box>
+        <Section title="Department">
+          <DepartmentField value={departmentId} onChange={setDepartmentId}
+                           departments={departments.data?.items ?? []} loading={departments.isLoading} />
         </Section>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>

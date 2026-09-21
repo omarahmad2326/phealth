@@ -605,6 +605,25 @@ def _place(building: Optional[str], floor: Optional[str], spot: Optional[str]) -
     return " · ".join(part for part in (building, floor, spot) if part) or "Not recorded"
 
 
+def _department_named(ctx: ToolContext, facility_id: int, name: Any):
+    """The site's department by the name the person used: an exact match, or
+    the only one whose name contains it."""
+    from app.models.department import Department
+
+    if name in (None, ""):
+        return None
+    wanted = str(name).strip().lower()
+    departments = ctx.db.query(Department).filter(Department.facility_id == facility_id).all()
+    exact = [row for row in departments if row.name.strip().lower() == wanted]
+    if exact:
+        return exact[0]
+    partial = [row for row in departments if wanted in row.name.lower()]
+    if len(partial) == 1:
+        return partial[0]
+    names = ", ".join(sorted(row.name for row in departments)) or "none yet"
+    raise ToolInputError("No single department called '{}' at this site. Its departments: {}.".format(name, names))
+
+
 def _prepare_add_equipment(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
     from app.api.v1.endpoints.site_categories import MAX_TOTAL_COST
     from app.schemas.site_categories import CategoryEquipmentCreate
@@ -612,10 +631,13 @@ def _prepare_add_equipment(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
 
     site = _site(ctx, args.get("facility_id"))
     fields = _equipment_fields(ctx, args, site.id)
-    missing = [label for key, label in (("category", "category"), ("name", "name"), ("type", "type"),
-                                        ("building", "building")) if not fields.get(key)]
+    missing = [label for key, label in (("category", "category"), ("name", "name"), ("type", "type"))
+               if not fields.get(key)]
     if missing:
         raise ToolInputError("New equipment needs its {}. Ask the person for it.".format(", ".join(missing)))
+    department = _department_named(ctx, site.id, args.get("department"))
+    if department is not None:
+        fields["department_id"] = department.id
     category = site_categories.BY_CODE[fields.pop("category")]
     fields.setdefault("quantity", 1)
     fields.setdefault("condition", "working")
@@ -642,9 +664,11 @@ def _prepare_add_equipment(ctx: ToolContext, args: dict[str, Any]) -> Prepared:
     life = fields.get("useful_life_years")
     lines = [
         ("Site", site.name), ("Category", category.name), ("Name", fields["name"]), ("Type", fields["type"]),
-        ("Where", _place(fields.get("building"), fields.get("floor"), fields.get("spot"))),
+        ("Department", department.name if department is not None else "Not in a department"),
         ("Quantity", str(quantity)), ("Status", site_categories.CONDITIONS[fields["condition"]]),
     ]
+    if fields.get("building") or fields.get("floor") or fields.get("spot"):
+        lines.append(("Where", _place(fields.get("building"), fields.get("floor"), fields.get("spot"))))
     if fields.get("make") or fields.get("model"):
         lines.append(("Make and model", " ".join(p for p in (fields.get("make"), fields.get("model")) if p)))
     if total is not None:
@@ -986,19 +1010,17 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
         module="facility-inventory", permission="add",
         description=(
             "Prepare adding equipment to a site's Electrical, Plumbing, Mechanical or HVAC category. Needs the "
-            "category, a name (e.g. 'Generator 2'), its type (e.g. Generator, Chiller) and the building it is in; "
-            "ask for any of these that the person did not give. Floor, room or exact spot, quantity, status, make, "
-            "model, the purchase cost of one item, the in-service date, useful life and notes are optional. "
-            "Nothing happens until confirmed."
+            "category, a name (e.g. 'Generator 2') and its type (e.g. Generator, Chiller); ask for any of these "
+            "that the person did not give. The department it belongs to (by name, e.g. 'Radiology'), quantity, "
+            "status, make, model, the purchase cost of one item, the in-service date, useful life and notes are "
+            "optional. Nothing happens until confirmed."
         ),
         parameters={"type": "object", "properties": {
             "facility_id": {"type": "integer", "description": "The site. Defaults to the one the person is in."},
             "category": {"type": "string", "enum": ["electrical", "plumbing", "mechanical", "hvac"]},
             "name": {"type": "string"},
             "type": {"type": "string"},
-            "building": {"type": "string"},
-            "floor": {"type": "string"},
-            "spot": {"type": "string", "description": "Room or exact spot."},
+            "department": {"type": "string", "description": "The department it belongs to, by name."},
             "quantity": {"type": "integer", "minimum": 1},
             "status": {"type": "string", "enum": ["working", "needs_attention", "out_of_service"]},
             "make": {"type": "string"},
@@ -1007,7 +1029,7 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
             "in_service_on": {"type": "string", "format": "date"},
             "useful_life_years": {"type": "number", "exclusiveMinimum": 0, "maximum": 100},
             "notes": {"type": "string"},
-        }, "required": ["category", "name", "type", "building"]},
+        }, "required": ["category", "name", "type"]},
         prepare=_prepare_add_equipment, execute=_execute_add_equipment,
     ),
     ActionDefinition(

@@ -16,12 +16,12 @@ import {
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
-import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined'
+import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
 import AccountBalanceOutlinedIcon from '@mui/icons-material/AccountBalanceOutlined'
 import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
 import {
-  fetchCategoryEquipment, fetchPlaceSuggestions, formatMoney, type CategoryCode, type CategoryEquipment,
+  fetchCategoryEquipment, formatMoney, type CategoryCode, type CategoryEquipment,
   type Condition,
 } from '@/api/siteCategories'
 import { hasPermission } from '@/config/permissions'
@@ -55,8 +55,8 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
 
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
-  const [building, setBuilding] = useState('')
-  const [floor, setFloor] = useState('')
+  // A department's id, 'none' for items in no department, or '' for all.
+  const [department, setDepartment] = useState('')
   const [condition, setCondition] = useState('')
   const [editing, setEditing] = useState<CategoryEquipment | null>(null)
   const [adding, setAdding] = useState(false)
@@ -71,21 +71,15 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
   }, [search])
 
   const list = useQuery({
-    queryKey: ['category-equipment', facilityId, code, debounced, building, floor, condition],
-    queryFn: () => fetchCategoryEquipment(code, facilityId as number, { search: debounced, building, floor, condition }),
+    queryKey: ['category-equipment', facilityId, code, debounced, department, condition],
+    queryFn: () => fetchCategoryEquipment(code, facilityId as number, { search: debounced, department, condition }),
     enabled: !!facilityId,
     placeholderData: (previous) => previous,
   })
-  const { data: places } = useQuery({
-    queryKey: ['place-suggestions', facilityId],
-    queryFn: () => fetchPlaceSuggestions(facilityId as number),
-    enabled: !!facilityId,
-    staleTime: 60_000,
-  })
-
   const items = list.data?.items ?? []
   const types = list.data?.category.types ?? []
-  const filtering = Boolean(debounced || building || floor || condition)
+  const filtering = Boolean(debounced || department || condition)
+  const departments = list.data?.departments ?? []
   const needsCare = useMemo(() => items.filter((i) => i.condition !== 'working').length, [items])
 
   return (
@@ -123,23 +117,19 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
 
       <Box sx={{ border: `1px solid ${palette.borderSoft}`, borderRadius: '18px', bgcolor: palette.white, overflow: 'hidden' }}>
         <Box sx={{ p: 1.5, display: 'grid', gap: 1.25,
-                   gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '2fr 1fr 1fr 1fr' } }}>
+                   gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '2fr 1fr 1fr' } }}>
           <TextField
-            size="small" placeholder="Search name, type, tag, place…" value={search}
+            size="small" placeholder="Search name, type or tag…" value={search}
             onChange={(e) => setSearch(e.target.value)}
             InputProps={{ startAdornment: (
               <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: palette.textFaint }} /></InputAdornment>
             ) }}
           />
-          <TextField select size="small" label="Building" value={building} onChange={(e) => setBuilding(e.target.value)}
-                     {...SHOW_EMPTY}>
-            <MenuItem value="">All buildings</MenuItem>
-            {(places?.buildings ?? []).map((b) => <MenuItem key={b} value={b}>{b}</MenuItem>)}
-          </TextField>
-          <TextField select size="small" label="Floor" value={floor} onChange={(e) => setFloor(e.target.value)}
-                     {...SHOW_EMPTY}>
-            <MenuItem value="">All floors</MenuItem>
-            {(places?.floors ?? []).map((f) => <MenuItem key={f} value={f}>{f}</MenuItem>)}
+          <TextField select size="small" label="Department" value={department}
+                     onChange={(e) => setDepartment(e.target.value)} {...SHOW_EMPTY}>
+            <MenuItem value="">All departments</MenuItem>
+            <MenuItem value="none">Not in a department</MenuItem>
+            {departments.map((d) => <MenuItem key={d.id} value={String(d.id)}>{d.name}</MenuItem>)}
           </TextField>
           <TextField select size="small" label="Status" value={condition} onChange={(e) => setCondition(e.target.value)}
                      {...SHOW_EMPTY}>
@@ -153,7 +143,7 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
         {/* Column headings, on screens wide enough for columns. */}
         <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: COLUMNS, gap: 2, px: 2, py: 1,
                    borderTop: `1px solid ${palette.borderSoft}`, bgcolor: palette.surfaceFaint }}>
-          {['Equipment', 'Where', 'Qty', 'Status', 'Book value', 'Next service', ''].map((h) => (
+          {['Equipment', 'Department', 'Qty', 'Status', 'Book value', 'Next service', ''].map((h) => (
             <Typography key={h} sx={{ fontSize: 11, fontWeight: 900, letterSpacing: 0.4, textTransform: 'uppercase',
                                       color: palette.textSubtle }}>
               {h}
@@ -175,7 +165,7 @@ function CategoryEquipmentList({ code }: { code: CategoryCode }) {
             {!filtering && (
               <>
                 <Typography sx={{ mt: 0.5, fontSize: 13, color: palette.textFaint }}>
-                  Add each {types.slice(0, 3).join(', ').toLowerCase() || 'item'} and where exactly it is.
+                  Add each {types.slice(0, 3).join(', ').toLowerCase() || 'item'} and the department it belongs to.
                 </Typography>
                 {canAdd && (
                   <Button startIcon={<AddIcon />} onClick={() => setAdding(true)} sx={{ mt: 1.5, fontWeight: 900 }}>
@@ -272,9 +262,10 @@ function EquipmentRow({ item, onOpen, onValue, onInspect }: {
                   bgcolor: status.bg, color: status.color }} />
 
       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, gridColumn: { xs: '1 / -1', md: 'auto' } }}>
-        <PlaceOutlinedIcon sx={{ fontSize: 15, color: palette.textFaint, flexShrink: 0 }} />
-        <Typography noWrap sx={{ fontSize: 13, color: palette.textStrong, fontWeight: 600 }}>
-          {item.location_label || '—'}
+        <DomainOutlinedIcon sx={{ fontSize: 15, color: palette.textFaint, flexShrink: 0 }} />
+        <Typography noWrap sx={{ fontSize: 13, fontWeight: 600,
+                                 color: item.department ? palette.textStrong : palette.textFaint }}>
+          {item.department ?? 'Not in a department'}
         </Typography>
       </Stack>
       <Typography sx={{ display: { xs: 'none', md: 'block' }, fontSize: 13, fontWeight: 800, color: palette.textStrong }}>
