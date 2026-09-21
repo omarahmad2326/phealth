@@ -49,6 +49,7 @@ const InspectionVisits = lazyWithReload(() => import('./pages/InspectionVisits')
 const InspectionVisit = lazyWithReload(() => import('./pages/InspectionVisits/Visit'))
 const Fleet = lazyWithReload(() => import('./pages/Fleet'))
 const RedTags = lazyWithReload(() => import('./pages/RedTags'))
+const InspectionStatus = lazyWithReload(() => import('./pages/InspectionStatus'))
 const Service = lazyWithReload(() => import('./pages/Service'))
 
 const RouteFallback = () => (
@@ -192,6 +193,7 @@ function App() {
           <Route path="inspection-visits/:id" element={<RequireSite><ProtectedPage module="inspections"><InspectionVisit /></ProtectedPage></RequireSite>} />
           <Route path="fleet" element={<RequireSite><ProtectedPage module="inspections"><Fleet /></ProtectedPage></RequireSite>} />
           <Route path="red-tags" element={<RequireSite><ProtectedPage module="inspections"><RedTags /></ProtectedPage></RequireSite>} />
+          <Route path="inspection-status" element={<ProtectedPage module="inspections"><InspectionStatus /></ProtectedPage>} />
           <Route path="service" element={<RequireSite><ProtectedPage module="service-requests"><Service /></ProtectedPage></RequireSite>} />
           {/* Where Equipment Maintenance used to be. */}
           <Route path="equipment-maintenance/:kind" element={<Navigate to="/service" replace />} />

@@ -12,7 +12,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Box, Chip, CircularProgress, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded'
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
-import { fetchInspectionDashboard, type DashboardSite } from '@/api/inspectionProgramme'
+import { fetchInspectionDashboard, statusPath, type DashboardSite, type InspectionState } from '@/api/inspectionProgramme'
 import { useFacilityStore } from '@/hooks/useActiveFacility'
 import { palette } from '@/theme/palette'
 import { CountTile } from '@/pages/Inspections/programme/parts'
@@ -51,6 +51,8 @@ export default function InspectionSummary() {
       not_scheduled: sum.not_scheduled + row.not_scheduled,
     }), { items: 0, passed: 0, failed: 0, red_tagged: 0, in_progress: 0, due: 0, overdue: 0, not_scheduled: 0 })
 
+  const list = (state: InspectionState) => navigate(statusPath(state, { site: only === '' ? 'all' : only }))
+
   const open = (site: DashboardSite) => {
     setFacilityId(site.facility_id)
     navigate(`/sites/${site.facility_id}`)
@@ -87,12 +89,18 @@ export default function InspectionSummary() {
       </Stack>
 
       <Stack direction="row" spacing={1.2} sx={{ px: 2, pb: 1.8, flexWrap: 'wrap', gap: 1.2 }}>
-        <CountTile label="Passed" value={totals.passed} tone={{ color: '#15803D', bg: '#F0FDF4' }} />
-        <CountTile label="Failed" value={totals.failed} tone={{ color: '#B45309', bg: '#FEF3C7' }} />
-        <CountTile label="Red tagged" value={totals.red_tagged} tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
-        <CountTile label="In progress" value={totals.in_progress} tone={{ color: '#1D4ED8', bg: '#EFF6FF' }} />
-        <CountTile label="Due" value={totals.due} tone={{ color: '#92400E', bg: '#FEF3C7' }} />
-        <CountTile label="Overdue" value={totals.overdue} tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
+        <CountTile label="Passed" value={totals.passed} tone={{ color: '#15803D', bg: '#F0FDF4' }}
+                   onClick={() => list('passed')} />
+        <CountTile label="Failed" value={totals.failed} tone={{ color: '#B45309', bg: '#FEF3C7' }}
+                   onClick={() => list('failed')} />
+        <CountTile label="Red tagged" value={totals.red_tagged} tone={{ color: '#B91C1C', bg: '#FEE2E2' }}
+                   onClick={() => list('red_tagged')} />
+        <CountTile label="In progress" value={totals.in_progress} tone={{ color: '#1D4ED8', bg: '#EFF6FF' }}
+                   onClick={() => list('in_progress')} />
+        <CountTile label="Due" value={totals.due} tone={{ color: '#92400E', bg: '#FEF3C7' }}
+                   onClick={() => list('due')} />
+        <CountTile label="Overdue" value={totals.overdue} tone={{ color: '#B91C1C', bg: '#FEE2E2' }}
+                   onClick={() => list('overdue')} />
       </Stack>
 
       <Box sx={{ display: { xs: 'none', md: 'grid' }, gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 32px',

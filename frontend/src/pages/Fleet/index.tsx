@@ -22,9 +22,10 @@ import {
   addVehicle, attachFleetForm, deleteVehicle, detachFleetForm, fetchVehicles, updateVehicle,
 } from '@/api/fleet'
 import {
-  errorMessage, fetchFormLibrary, fetchInspectors, shortDate,
+  errorMessage, fetchFormLibrary, fetchInspectors, shortDate, statusPath,
   type Frequency, type ProgrammeItem,
 } from '@/api/inspectionProgramme'
+import { useNavigate } from 'react-router-dom'
 import { hasPermission } from '@/config/permissions'
 import { useActiveFacility } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
@@ -40,6 +41,7 @@ const CONDITIONS = [
 ] as const
 
 export default function FleetPage() {
+  const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const queryClient = useQueryClient()
   const { facilityId, facility } = useActiveFacility()
@@ -116,10 +118,14 @@ export default function FleetPage() {
       {counts && (
         <Stack direction="row" spacing={1.2} sx={{ mb: 2, flexWrap: 'wrap', gap: 1.2 }}>
           <CountTile label="Vehicles" value={counts.vehicles} />
-          <CountTile label="Due" value={counts.due} tone={{ color: '#92400E', bg: '#FEF3C7' }} />
-          <CountTile label="Overdue" value={counts.overdue} tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
-          <CountTile label="Passed" value={counts.passed} tone={{ color: '#15803D', bg: '#F0FDF4' }} />
-          <CountTile label="Red tagged" value={counts.red_tagged} tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
+          <CountTile label="Due" value={counts.due} tone={{ color: '#92400E', bg: '#FEF3C7' }}
+                     onClick={() => navigate(statusPath('due', { site: facilityId, kind: 'vehicle' }))} />
+          <CountTile label="Overdue" value={counts.overdue} tone={{ color: '#B91C1C', bg: '#FEE2E2' }}
+                     onClick={() => navigate(statusPath('overdue', { site: facilityId, kind: 'vehicle' }))} />
+          <CountTile label="Passed" value={counts.passed} tone={{ color: '#15803D', bg: '#F0FDF4' }}
+                     onClick={() => navigate(statusPath('passed', { site: facilityId, kind: 'vehicle' }))} />
+          <CountTile label="Red tagged" value={counts.red_tagged} tone={{ color: '#B91C1C', bg: '#FEE2E2' }}
+                     onClick={() => navigate(statusPath('red_tagged', { site: facilityId, kind: 'vehicle' }))} />
         </Stack>
       )}
 

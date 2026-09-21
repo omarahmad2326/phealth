@@ -326,42 +326,102 @@ def _blank_counts() -> dict[str, int]:
             "due": 0, "overdue": 0, "not_scheduled": 0}
 
 
-def site_counts(db: Session, facility_id: int, *, today: Optional[date] = None) -> dict[str, int]:
-    """The site's item counts: the numbers on the dashboard and the site page."""
-    today = today or utc_today()
-    counts = _blank_counts()
-    tagged_equipment, tagged_vehicles = open_tag_ids(db, facility_id)
-    in_progress = {
-        row[0] for row in db.query(Inspection.equipment_id).filter(
-            Inspection.facility_id == facility_id,
-            Inspection.status.in_([InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS]),
-        ).all() if row[0]
-    }
-    in_progress_vehicles = {
-        row[0] for row in db.query(Inspection.vehicle_id).filter(
-            Inspection.facility_id == facility_id,
-            Inspection.status.in_([InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS]),
-        ).all() if row[0]
-    }
+# What each count card means, in the order they are shown. A card and the
+# list it opens come from the same classification, so the list is always
+# exactly the number on the card.
+STATES: dict[str, str] = {
+    "passed": "Passed",
+    "failed": "Failed",
+    "red_tagged": "Red tagged",
+    "in_progress": "In progress",
+    "due": "Due",
+    "overdue": "Overdue",
+    "not_scheduled": "No schedule",
+}
 
-    for items, tagged, open_ids in (
-        (equipment_query(db, facility_id).all(), tagged_equipment, in_progress),
-        (vehicle_query(db, facility_id).all(), tagged_vehicles, in_progress_vehicles),
-    ):
+
+def classify_items(db: Session, facility_id: int, *, today: Optional[date] = None,
+                   department_id: Optional[int] = None, kind: Optional[str] = None) -> list[dict[str, Any]]:
+    """Every item at a site with the states it counts towards.
+
+    An item's last result counts once: a red tag outranks a failure, which
+    outranks a pass. Whether it is due and whether a visit is open for it are
+    separate questions, so one item can be Failed, Overdue and In progress at
+    the same time - which is the truth about it.
+    """
+    today = today or utc_today()
+    open_statuses = [InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS]
+    open_rows = db.query(Inspection.equipment_id, Inspection.vehicle_id, InspectionBatch.id,
+                         InspectionBatch.batch_number).join(
+        InspectionBatch, InspectionBatch.id == Inspection.batch_id).filter(
+        Inspection.facility_id == facility_id, Inspection.status.in_(open_statuses)).all()
+    open_equipment = {row[0]: (row[2], row[3]) for row in open_rows if row[0]}
+    open_vehicles = {row[1]: (row[2], row[3]) for row in open_rows if row[1]}
+    tags = db.query(RedTag).filter(RedTag.facility_id == facility_id, RedTag.cleared_at.is_(None)).all()
+    tagged_equipment = {tag.equipment_id: tag for tag in tags if tag.equipment_id}
+    tagged_vehicles = {tag.vehicle_id: tag for tag in tags if tag.vehicle_id}
+
+    sources = []
+    if kind in (None, "equipment"):
+        sources.append(("equipment", equipment_query(db, facility_id, department_id=department_id).all(),
+                        tagged_equipment, open_equipment))
+    if kind in (None, "vehicle") and department_id is None:
+        sources.append(("vehicle", vehicle_query(db, facility_id).all(), tagged_vehicles, open_vehicles))
+
+    rows = []
+    for item_kind, items, tagged, open_visits in sources:
         for item in items:
-            counts["items"] += 1
+            states = set()
             state = due_state(item, today=today)
             if state in ("due", "overdue", "not_scheduled"):
-                counts[state] += 1
+                states.add(state)
             if item.id in tagged:
-                counts["red_tagged"] += 1
+                states.add("red_tagged")
             elif item.last_inspection_result == "pass":
-                counts["passed"] += 1
+                states.add("passed")
             elif item.last_inspection_result == "fail":
-                counts["failed"] += 1
-            if item.id in open_ids:
-                counts["in_progress"] += 1
+                states.add("failed")
+            if item.id in open_visits:
+                states.add("in_progress")
+            rows.append({"item": item, "kind": item_kind, "states": states,
+                         "visit": open_visits.get(item.id), "tag": tagged.get(item.id)})
+    return rows
+
+
+def site_counts(db: Session, facility_id: int, *, today: Optional[date] = None) -> dict[str, int]:
+    """The site's item counts: the numbers on the dashboard and the site page."""
+    counts = _blank_counts()
+    for row in classify_items(db, facility_id, today=today):
+        counts["items"] += 1
+        for state in row["states"]:
+            counts[state] += 1
     return counts
+
+
+def status_rows(db: Session, facilities: Iterable, state: str, *, today: Optional[date] = None,
+                department_id: Optional[int] = None, kind: Optional[str] = None) -> list[dict[str, Any]]:
+    """The items behind one count card, across the sites given."""
+    if state not in STATES:
+        raise ProgrammeError("State is one of: {}.".format(", ".join(STATES)))
+    today = today or utc_today()
+    rows = []
+    for facility in facilities:
+        names = dict(db.query(Department.id, Department.name).filter(Department.facility_id == facility.id).all())
+        for row in classify_items(db, facility.id, today=today, department_id=department_id, kind=kind):
+            if state not in row["states"]:
+                continue
+            item, tag, visit = row["item"], row["tag"], row["visit"]
+            rows.append({
+                **item_payload(item, kind=row["kind"], red_tagged=tag is not None,
+                               department_name=names.get(getattr(item, "department_id", None)), today=today),
+                "site_id": facility.id,
+                "site": facility.name,
+                "open_visit": {"id": visit[0], "number": visit[1]} if visit else None,
+                "red_tag": ({"id": tag.id, "note": tag.note, "raised_at": tag.raised_at} if tag else None),
+            })
+    # The ones needing attention first: the longest overdue, then by name.
+    rows.sort(key=lambda r: (r["next_due_on"] or date.max, (r["name"] or "").lower()))
+    return rows
 
 
 def dashboard(db: Session, facilities: Iterable, *, today: Optional[date] = None) -> dict[str, Any]:

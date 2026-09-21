@@ -19,7 +19,7 @@ import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined'
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
 import {
   attachDepartmentForm, clearRedTag, detachDepartmentForm, errorMessage, fetchDepartmentDetail,
-  fetchFormLibrary, fetchInspectors, setItemSchedule, shortDate,
+  fetchFormLibrary, fetchInspectors, setItemSchedule, shortDate, statusPath,
   type Frequency, type ProgrammeItem,
 } from '@/api/inspectionProgramme'
 import { hasPermission } from '@/config/permissions'
@@ -102,9 +102,12 @@ export default function DepartmentDetail() {
 
       <Stack direction="row" spacing={1.2} sx={{ mb: 2, flexWrap: 'wrap', gap: 1.2 }}>
         <CountTile label="Items" value={items.length} />
-        <CountTile label="Due" value={due} tone={{ color: '#92400E', bg: '#FEF3C7' }} />
-        <CountTile label="Overdue" value={overdue} tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
-        <CountTile label="Red tags" value={redTags.length} tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
+        <CountTile label="Due" value={due} tone={{ color: '#92400E', bg: '#FEF3C7' }}
+                   onClick={() => navigate(statusPath('due', { department: departmentId }))} />
+        <CountTile label="Overdue" value={overdue} tone={{ color: '#B91C1C', bg: '#FEE2E2' }}
+                   onClick={() => navigate(statusPath('overdue', { department: departmentId }))} />
+        <CountTile label="Red tags" value={redTags.length} tone={{ color: '#B91C1C', bg: '#FEE2E2' }}
+                   onClick={() => navigate(statusPath('red_tagged', { department: departmentId }))} />
         <CountTile label="No schedule" value={unscheduled} />
       </Stack>
 

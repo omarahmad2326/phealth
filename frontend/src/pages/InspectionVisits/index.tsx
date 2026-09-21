@@ -4,8 +4,8 @@
  * A visit is a date, a scope and the items that were due by then. This screen
  * is the queue; the work happens inside one.
  */
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material'
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
@@ -31,6 +31,15 @@ export default function InspectionVisitsPage() {
   const [scheduling, setScheduling] = useState(false)
   const [inspecting, setInspecting] = useState(false)
   const canAdd = hasPermission(user, 'inspections', 'add')
+  // The Inspection card on the site page lands here ready to start one.
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    if (params.get('new') === '1' && canAdd) {
+      setInspecting(true)
+      params.delete('new')
+      setParams(params, { replace: true })
+    }
+  }, [params, setParams, canAdd])
 
   const list = useQuery({
     queryKey: ['visits', facilityId, filter],
@@ -51,7 +60,7 @@ export default function InspectionVisitsPage() {
           </Typography>
           <Typography variant="h4" sx={{ fontWeight: 900, color: palette.ink, lineHeight: 1.15 }}>Visits</Typography>
           <Typography sx={{ color: palette.textMuted, fontWeight: 700 }}>
-            {facility?.name ?? 'This site'} · {visits.length} {filter === 'all' ? 'in all' : filter}
+            {facility?.name ?? 'This site'} · {list.isLoading ? '…' : visits.length} {filter === 'all' ? 'in all' : filter}
           </Typography>
         </Box>
         {canAdd && (

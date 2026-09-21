@@ -185,6 +185,43 @@ export interface ScheduleIn {
 
 const base = '/inspection-programme'
 
+/** What each count card counts. */
+export type InspectionState =
+  'passed' | 'failed' | 'red_tagged' | 'in_progress' | 'due' | 'overdue' | 'not_scheduled'
+
+/** One item behind a count card. */
+export interface StatusRow extends ProgrammeItem {
+  site_id: number
+  site: string
+  open_visit: { id: number; number: string } | null
+  red_tag: { id: number; note: string; raised_at: string } | null
+}
+
+/** The items behind a card - exactly the number the card shows. */
+export const fetchInspectionStatus = async (options: {
+  state: InspectionState; facilityId?: number | null; departmentId?: number | null
+  kind?: 'equipment' | 'vehicle' | null
+}): Promise<{ state: InspectionState; label: string; total: number; items: StatusRow[] }> =>
+  (await apiClient.get(`${base}/status`, {
+    params: {
+      state: options.state,
+      ...(options.facilityId ? { facility_id: options.facilityId } : {}),
+      ...(options.departmentId ? { department_id: options.departmentId } : {}),
+      ...(options.kind ? { kind: options.kind } : {}),
+    },
+  })).data
+
+/** Where a count card goes. */
+export const statusPath = (state: InspectionState, scope: {
+  site?: number | 'all' | null; department?: number | null; kind?: 'vehicle' | null
+} = {}): string => {
+  const params = new URLSearchParams({ state })
+  if (scope.site) params.set('site', String(scope.site))
+  if (scope.department) params.set('department', String(scope.department))
+  if (scope.kind) params.set('kind', scope.kind)
+  return `/inspection-status?${params.toString()}`
+}
+
 export const fetchInspectionDashboard = async (): Promise<InspectionDashboard> =>
   (await apiClient.get(`${base}/dashboard`)).data
 

@@ -9,7 +9,7 @@ Two words matter here and they are not interchangeable: an **inspection** is
 the schedule that keeps equipment to standard, and **service** is the work
 raised when something is at fault. Keep these guides in step with
 pages/Categories, pages/Departments, pages/InspectionVisits, pages/Fleet,
-pages/RedTags and pages/Service.
+pages/RedTags, pages/InspectionStatus and pages/Service.
 """
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ Equipment under Facility is the same record as in the Asset Register, which show
         """An inspection is the schedule that keeps equipment up to standard. Every inspectable item - a piece of equipment in a department, or a vehicle in the fleet - carries one frequency, and from that comes the date it next falls due. There are no separate maintenance plans: the item is the schedule.
 
 ## Where to find it
-Open the site, then Inspections in the bar under the page title, and choose Departments, Visits, Fleet or Red tags. Inspection forms are built under Inspections > Inspection forms. The dashboard shows, for every site, how many items have Passed, Failed, been Red tagged, are In progress, Due or Overdue; choosing a site opens it.
+Open the site, then Inspections in the bar under the page title, and choose Departments, Visits, Fleet or Red tags. Inspection forms are built under Inspections > Inspection forms. The dashboard shows, for every site, how many items have Passed, Failed, been Red tagged, are In progress, Due or Overdue; choosing a site opens it. Every one of those count cards can be clicked: it opens Inspection status, the list of exactly the items the card counts, with the site, department, last result and next due date of each. The chips at the top switch between Passed, Failed, Red tagged, In progress, Due and Overdue, and Site switches between one site and All sites. Clicking a row opens where it is dealt with - its open visit, its red tag, its department or the Fleet - and Inspect starts an inspection of it there and then. The same cards on a site's page, on Departments, on one department and on the Fleet open the same list narrowed to that place.
 
 ## Departments
 Departments are the parts of a site: Radiology, Theatre, Pharmacy. Open Inspections > Departments to see each one with how many items it holds, how many are due or overdue, and how many are red-tagged. Press Add department to add one.
@@ -82,7 +82,7 @@ Nothing is created when an item falls due. The people who have to act - the pers
 4. Press Schedule visit. The visit holds the items due by then; anything overdue stays in until it is done.
 
 ## Inspect one item now
-Scheduling is for what falls due. To inspect one thing there and then, press Inspect it now - the tick-list icon on any equipment row under Facility, on any item in a department, or on any vehicle in the Fleet - or press New inspection on Inspections > Visits and choose the Category and the Equipment.
+Scheduling is for what falls due. To inspect one thing there and then, press Inspect it now - the tick-list icon on any equipment row under Facility, on any item in a department, or on any vehicle in the Fleet - or press New inspection on Inspections > Visits and choose the Category and the Equipment. The site's page has an Inspection card beside the Service card that does the same in one click.
 It asks only for Inspect on (the form) and, if you want, a Date and an Inspector. The form is already chosen when the item is in a department that has one; an item that is in no department can still be inspected by choosing any form from the library. Press Start inspection and it opens straight away for filling in, whether or not it was due. Recording it moves the item's next date on exactly as a scheduled inspection does.
 
 ## Checklist forms

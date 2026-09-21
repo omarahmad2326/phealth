@@ -69,6 +69,7 @@ const pageTitles: Record<string, string> = {
   '/inspection-visits': 'Inspection visits',
   '/fleet': 'Fleet',
   '/red-tags': 'Red tags',
+  '/inspection-status': 'Inspection status',
   '/sales/quotations': 'Sales Quotations',
   '/sales/invoices': 'Sales Invoices',
   '/sales/in-progress': 'Sales In Progress',

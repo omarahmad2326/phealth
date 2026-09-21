@@ -87,6 +87,32 @@ def dashboard(
     return payload
 
 
+@router.get("/status")
+def inspection_status(
+    state: str = Query(...),
+    facility_id: Optional[int] = Query(None),
+    department_id: Optional[int] = Query(None),
+    kind: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """The items behind a count card: what passed, failed, is red-tagged, in
+    progress, due or overdue. Exactly the number the card shows."""
+    if facility_id is not None:
+        sites = [_site(db, current_user, facility_id)]
+    else:
+        sites = _visible_sites(db, current_user)
+    if department_id is not None:
+        department = _department(db, current_user, department_id)
+        sites = [site for site in sites if site.id == department.facility_id]
+    if kind not in (None, "equipment", "vehicle"):
+        raise HTTPException(status_code=422, detail="kind is equipment or vehicle")
+    rows = programme.status_rows(db, sites, state, department_id=department_id, kind=kind)
+    db.commit()
+    return {"state": state, "label": programme.STATES.get(state, state), "total": len(rows), "items": rows,
+            "states": [{"value": key, "label": label} for key, label in programme.STATES.items()]}
+
+
 @router.get("/sites/{facility_id}/overview")
 def site_overview(
     facility_id: int,

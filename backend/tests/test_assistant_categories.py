@@ -214,7 +214,7 @@ def test_the_written_guides_describe_the_screens_and_are_generated():
     pages = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
     if pages.is_dir():
         screens = "".join(page.read_text(encoding="utf-8") for folder in
-                          ("Categories", "Service", "Departments", "InspectionVisits", "Fleet", "RedTags",
+                          ("Categories", "Service", "Departments", "InspectionVisits", "Fleet", "RedTags", "InspectionStatus",
                            "Inspections/programme")
                           for page in (pages / folder).glob("*.tsx"))
         for label in ("Add equipment", "Where is it?", "Room / exact spot", "What needs doing", "Assigned to",

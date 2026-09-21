@@ -40,10 +40,19 @@ export function CountTile({ label, value, tone, onClick }: {
   return (
     <Box
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={onClick ? `${label}: ${value}. Show the list` : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } : undefined}
       sx={{
         p: 1.4, borderRadius: '14px', minWidth: 96, flex: '1 1 96px',
         bgcolor: tone?.bg ?? palette.surfaceMuted, cursor: onClick ? 'pointer' : 'default',
         border: `1px solid ${tone ? 'transparent' : palette.borderSoft}`,
+        transition: 'transform 0.12s ease, box-shadow 0.12s ease',
+        ...(onClick ? {
+          '&:hover': { transform: 'translateY(-1px)', boxShadow: '0 4px 14px rgba(15,23,42,0.08)' },
+          '&:focus-visible': { outline: `2px solid ${tone?.color ?? palette.brand}`, outlineOffset: 2 },
+        } : {}),
       }}
     >
       <Typography sx={{ fontSize: 22, fontWeight: 900, lineHeight: 1.1, color: tone?.color ?? palette.ink }}>

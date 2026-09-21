@@ -18,7 +18,7 @@ import DomainAddOutlinedIcon from '@mui/icons-material/DomainAddOutlined'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded'
 import {
-  bulkAssignItems, errorMessage, fetchProgrammeDepartments, fetchProgrammeItems, shortDate,
+  bulkAssignItems, errorMessage, fetchProgrammeDepartments, fetchProgrammeItems, shortDate, statusPath,
   type DepartmentRow, type Frequency,
 } from '@/api/inspectionProgramme'
 import { createDepartment, deleteDepartment, updateDepartment } from '@/api/departments'
@@ -87,9 +87,12 @@ export default function DepartmentsPage() {
 
       <Stack direction="row" spacing={1.2} sx={{ mb: 2, flexWrap: 'wrap', gap: 1.2 }}>
         <CountTile label="Items" value={totals.items} />
-        <CountTile label="Due" value={totals.due} tone={{ color: '#92400E', bg: '#FEF3C7' }} />
-        <CountTile label="Overdue" value={totals.overdue} tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
-        <CountTile label="Red tagged" value={totals.red} tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
+        <CountTile label="Due" value={totals.due} tone={{ color: '#92400E', bg: '#FEF3C7' }}
+                   onClick={() => navigate(statusPath('due', { site: facilityId }))} />
+        <CountTile label="Overdue" value={totals.overdue} tone={{ color: '#B91C1C', bg: '#FEE2E2' }}
+                   onClick={() => navigate(statusPath('overdue', { site: facilityId }))} />
+        <CountTile label="Red tagged" value={totals.red} tone={{ color: '#B91C1C', bg: '#FEE2E2' }}
+                   onClick={() => navigate(statusPath('red_tagged', { site: facilityId }))} />
       </Stack>
 
       <Box sx={{ border: `1px solid ${palette.borderSoft}`, borderRadius: '18px', bgcolor: palette.white,

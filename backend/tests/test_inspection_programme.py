@@ -410,6 +410,55 @@ def test_only_the_inspector_admins_and_super_admins_fill_a_visit():
     print("ok  filling in a visit is for its inspector, admins and Super Admins; a finished visit is kept")
 
 
+def test_every_card_opens_exactly_the_items_it_counts():
+    """Click a card, get its list - and the list is always the card's number."""
+    db, site, other, people, departments, equipment, _ = build()
+    visit = api.create_visit(VisitIn(facility_id=site.id, scope="department",
+                                     department_id=departments["radiology"].id,
+                                     scheduled_on=TODAY + timedelta(days=7),
+                                     inspector_id=people["ali"].id), db=db, current_user=people["boss"])
+    items = {item["name"]: item for item in visit["item_list"]}
+    api.record_item(visit["id"], items["CT scanner GE-01"]["id"], RecordItemIn(result="pass"),
+                    db=db, current_user=people["boss"])
+    api.record_item(visit["id"], items["X-ray XR-02"]["id"], RecordItemIn(
+        result="red_tag", note="Shutter jammed open"), db=db, current_user=people["boss"])
+    # Another visit left open: the ultrasound is in progress.
+    open_visit = api.inspect_now(InspectNowIn(facility_id=site.id, equipment_id=equipment["ultrasound"]["id"]),
+                                 db=db, current_user=people["boss"])
+
+    def status(state, **filters):
+        return api.inspection_status(state=state, facility_id=filters.get("facility_id"),
+                                     department_id=filters.get("department_id"), kind=filters.get("kind"),
+                                     db=db, current_user=people["boss"])
+
+    counts = api.site_overview(site.id, db=db, current_user=people["boss"])["counts"]
+    for state in ("passed", "failed", "red_tagged", "in_progress", "due", "overdue", "not_scheduled"):
+        listed = status(state, facility_id=site.id)
+        assert listed["total"] == counts[state], (state, listed["total"], counts[state])
+
+    passed = status("passed", facility_id=site.id)
+    assert [row["name"] for row in passed["items"]] == ["CT scanner GE-01"]
+    tagged = status("red_tagged", facility_id=site.id)["items"]
+    assert tagged[0]["name"] == "X-ray XR-02" and tagged[0]["red_tag"]["note"] == "Shutter jammed open"
+    in_progress = status("in_progress", facility_id=site.id)["items"]
+    assert [row["name"] for row in in_progress] == ["Ultrasound US-03"]
+    assert in_progress[0]["open_visit"]["id"] == open_visit["id"], "it says which visit to open"
+
+    # Across every site the person can see, each row says which site it is.
+    everywhere = status("passed")
+    assert everywhere["total"] == 1 and everywhere["items"][0]["site"] == "Texas Pain Facility"
+    # Narrowed to a department, or to the fleet.
+    assert status("red_tagged", department_id=departments["pharmacy"].id)["total"] == 0
+    assert status("red_tagged", department_id=departments["radiology"].id)["total"] == 1
+    assert status("due", facility_id=site.id, kind="vehicle")["total"] == 0
+
+    refused(lambda: status("broken", facility_id=site.id), 422)
+    refused(lambda: api.inspection_status(state="passed", facility_id=other.id, department_id=None, kind=None,
+                                          db=db, current_user=people["manager"]), 403)
+    db.close()
+    print("ok  every count card opens exactly the items it counts, per site, department or fleet")
+
+
 def test_the_dashboard_counts_items_across_sites():
     db, site, other, people, departments, equipment, _ = build()
     visit = api.create_visit(VisitIn(facility_id=site.id, scope="department",

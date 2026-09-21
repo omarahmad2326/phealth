@@ -140,6 +140,7 @@ screen is what an authority would be shown.
 | Screen | Path |
 |---|---|
 | Dashboard block: item counts per site, with a site picker | `/dashboard` |
+| Inspection status: the items behind any count card | `/inspection-status?state=&site=&department=&kind=` |
 | Service: faults and malfunctions, assigned and costed | `/service` |
 | Site hub: the site's counts, then its departments, visits, fleet and red tags | `/sites/:id` |
 | Departments, and items not in one | `/departments` |
@@ -161,6 +162,25 @@ the site" means. Two things that were the same idea in two places are gone:
   assets that are not in the inspection programme are left alone and still
   generate work, because for them the plan is the only clock they have.
 
+### Count cards open their list
+
+Every count card - Passed, Failed, Red tagged, In progress, Due, Overdue - on
+the dashboard, a site's page, Departments, one department and the Fleet opens
+**Inspection status** filtered to that card and that place. The number on the
+card and the length of the list come from one function on the server
+(`classify_items`), so they cannot disagree; a test compares them for every
+state, per site, across sites, per department and for the fleet.
+
+An item's last result counts once (red tag, then failed, then passed). Due,
+overdue and in progress are separate questions, so one item can be Failed,
+Overdue and In progress at the same time. A row opens where it is dealt with:
+its open visit, its red tag, its department or the Fleet; **Inspect** starts an
+inspection of it on the spot.
+
+The site's page has an **Inspection** card beside **Service** in its Service
+section: it shows how much is due or overdue and opens New inspection
+straight away (`/inspection-visits?new=1`).
+
 ## API
 
 All under `/api/v1`, gated by the `inspections` module:
@@ -168,6 +188,8 @@ All under `/api/v1`, gated by the `inspections` module:
 ```
 GET  inspection-programme/dashboard                   every site's numbers
 GET  inspection-programme/sites/{id}/overview         one site
+GET  inspection-programme/status                      the items behind a card:
+                                                      ?state= ?facility_id= ?department_id= ?kind=
 GET  inspection-programme/departments                 with counts
 GET  inspection-programme/departments/{id}            forms, items, visits, tags
 POST inspection-programme/departments/{id}/forms      attach a form

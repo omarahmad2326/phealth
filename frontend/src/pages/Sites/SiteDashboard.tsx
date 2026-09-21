@@ -15,7 +15,8 @@ import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined'
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined'
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined'
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined'
-import { fetchSiteOverview as fetchInspectionOverview } from '@/api/inspectionProgramme'
+import { fetchSiteOverview as fetchInspectionOverview, statusPath, type InspectionState } from '@/api/inspectionProgramme'
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
 import { CountTile } from '@/pages/Inspections/programme/parts'
 import {
   Box, Breadcrumbs, Button, Link, Skeleton, Stack, Typography,
@@ -140,18 +141,20 @@ export default function SiteDashboard() {
       {hasPermission(user, 'inspections', 'index') && (
         <Section title="Inspections">
           <Box sx={{ display: 'flex', gap: 1.2, flexWrap: 'wrap', mb: 1.5 }}>
-            <CountTile label="Passed" value={inspections.data?.counts.passed ?? 0}
-                       tone={{ color: '#15803D', bg: '#F0FDF4' }} />
-            <CountTile label="Failed" value={inspections.data?.counts.failed ?? 0}
-                       tone={{ color: '#B45309', bg: '#FEF3C7' }} />
-            <CountTile label="Red tagged" value={inspections.data?.counts.red_tagged ?? 0}
-                       tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
-            <CountTile label="In progress" value={inspections.data?.counts.in_progress ?? 0}
-                       tone={{ color: '#1D4ED8', bg: '#EFF6FF' }} />
-            <CountTile label="Due" value={inspections.data?.counts.due ?? 0}
-                       tone={{ color: '#92400E', bg: '#FEF3C7' }} />
-            <CountTile label="Overdue" value={inspections.data?.counts.overdue ?? 0}
-                       tone={{ color: '#B91C1C', bg: '#FEE2E2' }} />
+            {([
+              ['passed', 'Passed', { color: '#15803D', bg: '#F0FDF4' }],
+              ['failed', 'Failed', { color: '#B45309', bg: '#FEF3C7' }],
+              ['red_tagged', 'Red tagged', { color: '#B91C1C', bg: '#FEE2E2' }],
+              ['in_progress', 'In progress', { color: '#1D4ED8', bg: '#EFF6FF' }],
+              ['due', 'Due', { color: '#92400E', bg: '#FEF3C7' }],
+              ['overdue', 'Overdue', { color: '#B91C1C', bg: '#FEE2E2' }],
+            ] as Array<[InspectionState, string, { color: string; bg: string }]>).map(([state, label, tone]) => (
+              <CountTile
+                key={state} label={label} tone={tone}
+                value={(inspections.data?.counts as Record<string, number> | undefined)?.[state] ?? 0}
+                onClick={() => navigate(statusPath(state, { site: siteId }))}
+              />
+            ))}
           </Box>
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
             <Tile
@@ -217,6 +220,24 @@ export default function SiteDashboard() {
       {showService && (
         <Section title="Service">
           <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(4, 1fr)' } }}>
+            {/* The two words side by side: inspect to keep things to standard,
+                service when something is at fault. This one starts an
+                inspection straight away. */}
+            {hasPermission(user, 'inspections', 'add') && (
+              <Tile
+                onClick={() => navigate('/inspection-visits?new=1')} loading={inspections.isLoading}
+                icon={<PlaylistAddCheckIcon />} colour={palette.brand} title="Inspection"
+                figure={inspections.data ? String(inspections.data.counts.due + inspections.data.counts.overdue)
+                  : undefined}
+                facts={inspections.data ? [
+                  { text: inspections.data.counts.due + inspections.data.counts.overdue
+                    ? 'to inspect' : 'Nothing due', tone: 'plain' as const },
+                  ...(inspections.data.counts.overdue
+                    ? [{ text: `${inspections.data.counts.overdue} overdue`, tone: 'danger' as const }] : []),
+                  { text: 'Start an inspection', tone: 'good' as const },
+                ] : []}
+              />
+            )}
             <Tile
               onClick={() => navigate(SERVICE_LINK.path)} loading={maintenance.isLoading}
               icon={SERVICE_LINK.icon} colour={palette.brand} title="Service"
