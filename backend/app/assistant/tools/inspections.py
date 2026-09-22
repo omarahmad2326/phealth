@@ -139,6 +139,8 @@ def inspection_status(
             "sites_by_status": {
                 "passed": board["site_totals"]["passed"],
                 "failed": board["site_totals"]["failed"],
+                "with_an_inspection_coming_up": board["site_totals"]["upcoming"],
+                "with_an_inspection_in_progress": board["site_totals"]["in_progress"],
                 "overdue": board["site_totals"]["overdue"],
                 "passed_all_inspections": board["site_totals"]["passed_all"],
                 "sites": board["site_totals"]["sites"],

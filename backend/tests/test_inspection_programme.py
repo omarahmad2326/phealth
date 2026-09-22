@@ -484,6 +484,50 @@ def test_the_dashboard_counts_items_across_sites():
     print("ok  the dashboard counts items per site, worst first, with the site's size")
 
 
+def totals_of(board, *keys):
+    return {key: board["site_totals"][key] for key in keys}
+
+
+def test_sites_with_an_inspection_coming_up_or_in_progress():
+    """Upcoming: a visit scheduled and not started, or something due in 30 days.
+    In progress: a visit started and not finished."""
+    db, site, other, people, departments, equipment, _ = build()
+
+    def judge():
+        db.commit()
+        return programme.dashboard(db, [site, other], today=TODAY)
+
+    def due_on(key, when):
+        db.get(Equipment, equipment[key]["id"]).next_generated_pm_date = when
+
+    # The X-ray falls due in a week: coming up. Nothing is under way.
+    board = judge()
+    assert totals_of(board, "upcoming", "in_progress") == {"upcoming": 1, "in_progress": 0}
+
+    # Nothing due for months: nothing coming up.
+    for key in ("ct", "xray", "ultrasound"):
+        due_on(key, TODAY + timedelta(days=100))
+    board = judge()
+    assert totals_of(board, "upcoming", "in_progress") == {"upcoming": 0, "in_progress": 0}
+
+    # A visit scheduled for later, not started: coming up.
+    visit = api.create_visit(VisitIn(facility_id=site.id, scope="department", department_id=departments["radiology"].id,
+                                     scheduled_on=TODAY + timedelta(days=120)), db=db, current_user=people["boss"])
+    board = judge()
+    texas = next(row for row in board["sites"] if row["name"] == "Texas Pain Facility")
+    assert (texas["visits_upcoming"], texas["visits_in_progress"]) == (1, 0)
+    assert totals_of(board, "upcoming", "in_progress") == {"upcoming": 1, "in_progress": 0}
+
+    # Its first item recorded: the visit is under way, no longer only coming up.
+    first = visit["item_list"][0]
+    api.record_item(visit["id"], first["id"], RecordItemIn(result="pass"), db=db, current_user=people["boss"])
+    board = judge()
+    assert totals_of(board, "upcoming", "in_progress") == {"upcoming": 0, "in_progress": 1}
+    assert totals_of(board, "sites") == {"sites": 2}, "Karachi has nothing coming up or under way"
+    db.close()
+    print("ok  a site has an inspection coming up, or one in progress, from its visits and its clocks")
+
+
 def test_each_site_is_passed_failed_overdue_or_all_passed():
     """The cards above the sites count sites, each judged on its items' latest results."""
     db, site, other, people, departments, equipment, _ = build()
@@ -502,7 +546,7 @@ def test_each_site_is_passed_failed_overdue_or_all_passed():
     board, rows = judge()
     assert rows["Texas Pain Facility"]["status"] is None, "nothing inspected yet is none of the four"
     assert rows["Karachi Hospital"]["status"] is None
-    assert board["site_totals"] == {"sites": 2, "passed": 0, "failed": 0, "overdue": 1, "passed_all": 0}
+    assert totals_of(board, "sites", "passed", "failed", "overdue", "passed_all") == {"sites": 2, "passed": 0, "failed": 0, "overdue": 1, "passed_all": 0}
 
     # One pass, the rest not inspected yet: Passed, not Passed all.
     result("ct", "pass", next_due=TODAY + timedelta(days=90))
@@ -516,19 +560,19 @@ def test_each_site_is_passed_failed_overdue_or_all_passed():
     board, rows = judge()
     texas = rows["Texas Pain Facility"]
     assert (texas["status"], texas["status_label"]) == ("passed_all", "Passed all")
-    assert board["site_totals"] == {"sites": 2, "passed": 1, "failed": 0, "overdue": 0, "passed_all": 1}
+    assert totals_of(board, "sites", "passed", "failed", "overdue", "passed_all") == {"sites": 2, "passed": 1, "failed": 0, "overdue": 0, "passed_all": 1}
 
     # A pass that has since fallen overdue: still Passed, no longer Passed all, and Overdue.
     result("ultrasound", "pass", next_due=TODAY - timedelta(days=3))
     board, rows = judge()
     assert rows["Texas Pain Facility"]["status"] == "passed"
-    assert board["site_totals"] == {"sites": 2, "passed": 1, "failed": 0, "overdue": 1, "passed_all": 0}
+    assert totals_of(board, "sites", "passed", "failed", "overdue", "passed_all") == {"sites": 2, "passed": 1, "failed": 0, "overdue": 1, "passed_all": 0}
 
     # One failure outranks every pass: Failed, and Overdue as well.
     result("xray", "fail", next_due=TODAY)
     board, rows = judge()
     assert rows["Texas Pain Facility"]["status"] == "failed"
-    assert board["site_totals"] == {"sites": 2, "passed": 0, "failed": 1, "overdue": 1, "passed_all": 0}
+    assert totals_of(board, "sites", "passed", "failed", "overdue", "passed_all") == {"sites": 2, "passed": 0, "failed": 1, "overdue": 1, "passed_all": 0}
     # A red tag is a failure too.
     assert programme.site_status({**programme._blank_counts(), "items": 3, "passed": 2, "red_tagged": 1}) == "failed"
 

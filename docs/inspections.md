@@ -184,9 +184,12 @@ The Sites page counts **sites**, each judged on its items' latest results
 | Passed | something has passed and nothing is failing (some may be overdue or not inspected yet) |
 | none | nothing inspected yet ("Not inspected yet") |
 
-The four cards - Passed, Failed, Overdue, Passed all inspections - overlap on
-purpose: a site can be Failed and Overdue, and every Passed all site is also
-Passed. A card filters the rows to its sites. Each row drops open into its
+The four cards are **Passed** and **Failed** (by the status above, Passed
+including Passed all), **Upcoming** - a visit scheduled and not started, or
+equipment falling due in the next 30 days - and **In progress** - a visit
+started (its first item recorded) and not finished. They overlap on purpose: a
+site that failed can also have an inspection coming up. A card filters the rows
+to its sites. Each row drops open into its
 departments, each showing equipment passed out of total and how many failed
 (red tags included), then *Not in a department* and *Fleet* when they hold
 anything; they come from the same classified items as the site's numbers, so

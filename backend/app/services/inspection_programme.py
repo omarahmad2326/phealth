@@ -476,9 +476,27 @@ def status_rows(db: Session, facilities: Iterable, state: str, *, today: Optiona
     return rows
 
 
+def is_upcoming(site_row: dict[str, Any]) -> bool:
+    """An inspection is coming up: a visit scheduled and not started, or
+    something falling due within the next 30 days (not already overdue)."""
+    return bool(site_row["visits_upcoming"] or site_row["due"])
+
+
 def dashboard(db: Session, facilities: Iterable, *, today: Optional[date] = None) -> dict[str, Any]:
     """Every site the person can see, with its inspection numbers."""
     today = today or utc_today()
+    facilities = list(facilities)
+    # Visits by where they stand: scheduled and not started, or started and
+    # not finished. A visit starts when its first item is recorded.
+    visits: dict[tuple[int, Any], int] = {}
+    if facilities:
+        for facility_id, status, count in db.query(
+                InspectionBatch.facility_id, InspectionBatch.status, func.count(InspectionBatch.id)).filter(
+                InspectionBatch.facility_id.in_([f.id for f in facilities]),
+                InspectionBatch.inspection_scope.in_(SCOPES),
+                InspectionBatch.status.in_([InspectionStatus.UPCOMING, InspectionStatus.IN_PROGRESS]),
+        ).group_by(InspectionBatch.facility_id, InspectionBatch.status).all():
+            visits[(facility_id, getattr(status, "value", status))] = count
     sites, totals = [], _blank_counts()
     for facility in facilities:
         rows = classify_items(db, facility.id, today=today)
@@ -501,14 +519,18 @@ def dashboard(db: Session, facilities: Iterable, *, today: Optional[date] = None
             "status": status,
             "status_label": SITE_STATUSES.get(status) if status else None,
             "breakdown": site_breakdown(db, facility.id, rows),
+            "visits_upcoming": visits.get((facility.id, InspectionStatus.UPCOMING.value), 0),
+            "visits_in_progress": visits.get((facility.id, InspectionStatus.IN_PROGRESS.value), 0),
         })
     sites.sort(key=lambda row: (-row["red_tagged"], -row["overdue"], row["name"].lower()))
     # The cards above the sites: sites, not items. They overlap on purpose -
-    # a site can be Failed and Overdue, and every Passed all site has Passed.
+    # a site can have failed and have an inspection coming up.
     site_totals = {
         "sites": len(sites),
         "passed": sum(1 for row in sites if row["status"] in ("passed", "passed_all")),
         "failed": sum(1 for row in sites if row["status"] == "failed"),
+        "upcoming": sum(1 for row in sites if is_upcoming(row)),
+        "in_progress": sum(1 for row in sites if row["visits_in_progress"]),
         "overdue": sum(1 for row in sites if row["overdue"]),
         "passed_all": sum(1 for row in sites if row["status"] == "passed_all"),
     }

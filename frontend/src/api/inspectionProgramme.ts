@@ -50,13 +50,19 @@ export interface DashboardSite extends Counts {
   status: SiteStatus | null
   status_label: string | null
   breakdown: BreakdownRow[]
+  /** Visits scheduled and not started, and visits started and not finished. */
+  visits_upcoming: number
+  visits_in_progress: number
 }
 
 export interface InspectionDashboard {
   totals: Counts
   sites: DashboardSite[]
   /** Sites, not items, and overlapping: Failed and Overdue can both hold a site. */
-  site_totals: { sites: number; passed: number; failed: number; overdue: number; passed_all: number }
+  site_totals: {
+    sites: number; passed: number; failed: number; upcoming: number; in_progress: number
+    overdue: number; passed_all: number
+  }
   as_of: string
   frequencies: Array<{ value: Frequency; label: string }>
   due_soon_days: number

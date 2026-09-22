@@ -8,8 +8,9 @@
  * contractor's product; picking a site was something you did again on every
  * screen rather than once at the start.
  *
- * Four cards on top count sites: Passed, Failed, Overdue and Passed all
- * inspections, each site judged on its items' latest results. A card filters
+ * Four cards on top count sites: Passed and Failed, each site judged on its
+ * items' latest results; Upcoming, a visit scheduled or something falling due
+ * in the next 30 days; and In progress, a visit started. A card filters
  * the rows below to its sites. Each site is one slim row with its status that
  * drops open into its departments - passed out of total in each - and every
  * department card opens that department. One row is open at a time and the
@@ -43,27 +44,32 @@ import RegisterSiteDialog from './RegisterSiteDialog'
 
 const SIZE_LABEL: Record<string, string> = { small: 'Small', medium: 'Medium', large: 'Large' }
 
-type SiteFilter = 'passed' | 'failed' | 'overdue' | 'passed_all'
+type SiteFilter = 'passed' | 'failed' | 'upcoming' | 'in_progress'
 
-// The cards above the sites. They overlap on purpose: a site can be Failed
-// and Overdue, and every site that Passed all has also Passed.
+// The cards above the sites. They overlap on purpose: a site that failed can
+// also have an inspection coming up, or one under way.
 const SITE_CARDS: Array<[SiteFilter, string, { color: string; bg: string }]> = [
   ['passed', 'Passed', { color: '#15803D', bg: '#F0FDF4' }],
   ['failed', 'Failed', { color: '#B91C1C', bg: '#FEE2E2' }],
-  ['overdue', 'Overdue', { color: '#B45309', bg: '#FEF3C7' }],
-  ['passed_all', 'Passed all inspections', { color: '#065F46', bg: '#D1FAE5' }],
+  ['upcoming', 'Upcoming', { color: '#92400E', bg: '#FEF3C7' }],
+  ['in_progress', 'In progress', { color: '#1D4ED8', bg: '#EFF6FF' }],
 ]
 
-const FILTER_WORDS: Record<SiteFilter, string> = {
-  passed: 'passed', failed: 'failed', overdue: 'overdue', passed_all: 'passed all inspections',
+// The chip under the cards, and what an empty list says.
+const FILTER_WORDS: Record<SiteFilter, { chip: string; none: string }> = {
+  passed: { chip: 'Sites that passed', none: 'No site has passed yet' },
+  failed: { chip: 'Sites that failed', none: 'No site has failed right now' },
+  upcoming: { chip: 'Sites with an inspection coming up', none: 'No site has an inspection coming up' },
+  in_progress: { chip: 'Sites with an inspection in progress', none: 'No site has an inspection in progress' },
 }
 
 const matches = (filter: SiteFilter, numbers?: DashboardSite) => {
   if (!numbers) return false
   if (filter === 'passed') return numbers.status === 'passed' || numbers.status === 'passed_all'
   if (filter === 'failed') return numbers.status === 'failed'
-  if (filter === 'overdue') return numbers.overdue > 0
-  return numbers.status === 'passed_all'
+  // Scheduled and not started, or falling due in the next 30 days.
+  if (filter === 'upcoming') return numbers.visits_upcoming > 0 || numbers.due > 0
+  return numbers.visits_in_progress > 0
 }
 
 export default function SitesPage() {
@@ -190,7 +196,7 @@ export default function SitesPage() {
         />
         {filter && (
           <Chip
-            label={`Sites that ${filter === 'overdue' ? 'have something overdue' : FILTER_WORDS[filter]}`}
+            label={FILTER_WORDS[filter].chip}
             onDelete={() => change('show', null)}
             sx={{ fontWeight: 800, bgcolor: palette.brandTint, color: palette.brandDeep }}
           />
@@ -204,7 +210,7 @@ export default function SitesPage() {
                    border: `1px solid ${palette.borderSoft}`, bgcolor: palette.white }}>
           <Typography sx={{ fontWeight: 800, color: palette.textMuted }}>
             {filter
-              ? `No site has ${filter === 'overdue' ? 'anything overdue' : FILTER_WORDS[filter]} right now`
+              ? FILTER_WORDS[filter].none
               : data?.items?.length
                 ? 'Nothing matches'
                 : scopedToOwnSites
