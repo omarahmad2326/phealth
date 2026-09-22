@@ -26,7 +26,8 @@ RESULT_LABELS = {"pass": "Passed", "fail": "Failed", "red_tag": "Red tagged"}
 
 
 def _sites(ctx: ToolContext, facility_id: Optional[int]) -> list[Facility]:
-    query = ctx.scope_to_facilities(ctx.db.query(Facility).filter(Facility.status != "inactive"), Facility.id)
+    query = ctx.scope_to_facilities(
+        ctx.db.query(Facility).filter(Facility.status.notin_(("inactive", Facility.DELETED))), Facility.id)
     if facility_id is not None:
         site = query.filter(Facility.id == facility_id).first()
         if site is None:

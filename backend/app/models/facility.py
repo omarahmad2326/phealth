@@ -29,7 +29,7 @@ class Facility(Base):
 
     # Facility Details
     parent_facility_id = Column(Integer, ForeignKey("facilities.id"), nullable=True)
-    status = Column(String, nullable=False, default="active")  # active / inactive
+    status = Column(String, nullable=False, default="active")  # active / inactive / deleted
 
     # Billing
     billing_name = Column(String, nullable=True)
@@ -74,3 +74,13 @@ class Facility(Base):
 
     # Self-referential parent/child
     parent = relationship("Facility", remote_side=[id], backref="children", foreign_keys=[parent_facility_id])
+
+    # A deleted site keeps every record made at it - inspections, service
+    # jobs, invoices, attendance - and leaves every list of sites. Nothing is
+    # removed from the database, so nothing it held is lost.
+    DELETED = "deleted"
+
+    @classmethod
+    def live(cls):
+        """The filter for sites that have not been deleted."""
+        return cls.status != cls.DELETED

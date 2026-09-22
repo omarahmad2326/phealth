@@ -15,6 +15,7 @@
  * drops open into its departments - passed out of total in each - and every
  * department card opens that department. One row is open at a time and the
  * open one is kept in the address, so coming back to Sites finds it open.
+ * Super Admins and Admins can delete a site from its open row.
  */
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -28,6 +29,7 @@ import ApartmentIcon from '@mui/icons-material/Apartment'
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded'
 import CancelRoundedIcon from '@mui/icons-material/CancelRounded'
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded'
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
 import SearchIcon from '@mui/icons-material/Search'
 import VerifiedRoundedIcon from '@mui/icons-material/VerifiedRounded'
@@ -40,6 +42,7 @@ import { useFacilityStore } from '@/hooks/useActiveFacility'
 import { useAuthStore } from '@/stores/authStore'
 import { palette } from '@/theme/palette'
 import { CountTile } from '@/pages/Inspections/programme/parts'
+import DeleteSiteDialog from './DeleteSiteDialog'
 import RegisterSiteDialog from './RegisterSiteDialog'
 
 const SIZE_LABEL: Record<string, string> = { small: 'Small', medium: 'Medium', large: 'Large' }
@@ -77,10 +80,12 @@ export default function SitesPage() {
   const navigate = useNavigate()
   const setFacilityId = useFacilityStore((s) => s.setFacilityId)
   const canAdd = hasPermission(user, 'facilities', 'add')
+  const canDelete = hasPermission(user, 'facilities', 'delete')
   const canSeeInspections = hasPermission(user, 'inspections', 'index')
   const [search, setSearch] = useState('')
   const [params, setParams] = useSearchParams()
   const [registerOpen, setRegisterOpen] = useState(false)
+  const [deleting, setDeleting] = useState<Facility | null>(null)
   // These roles see only the hospitals they are assigned to, so an empty
   // list means something different for them than for an administrator.
   const scopedToOwnSites = ['facility_admin', 'facility_manager', 'technician', 'client']
@@ -238,6 +243,7 @@ export default function SitesPage() {
             key={site.id} site={site} numbers={numbers.get(site.id)} showNumbers={canSeeInspections}
             expanded={expanded === site.id} onToggle={() => toggle(site.id)}
             onOpen={() => open(site.id)} onPart={(part) => openPart(site.id, part)}
+            onDelete={canDelete ? () => setDeleting(site) : undefined}
           />
         ))}
       </Stack>
@@ -249,6 +255,14 @@ export default function SitesPage() {
           // Straight into the hospital just created: it is what you were
           // going to do next, and it is empty until you do.
           onCreated={(id) => { setRegisterOpen(false); open(id) }}
+        />
+      )}
+
+      {deleting && (
+        <DeleteSiteDialog
+          site={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => { setDeleting(null); change('open', null) }}
         />
       )}
     </Box>
@@ -276,7 +290,7 @@ function StatusBadge({ status }: { status: SiteStatus | null }) {
   )
 }
 
-function SiteRow({ site, numbers, showNumbers, expanded, onToggle, onOpen, onPart }: {
+function SiteRow({ site, numbers, showNumbers, expanded, onToggle, onOpen, onPart, onDelete }: {
   site: Facility
   numbers?: DashboardSite
   showNumbers: boolean
@@ -284,6 +298,8 @@ function SiteRow({ site, numbers, showNumbers, expanded, onToggle, onOpen, onPar
   onToggle: () => void
   onOpen: () => void
   onPart: (part: BreakdownRow) => void
+  /** Only for the people who may delete a site. */
+  onDelete?: () => void
 }) {
   const panelId = `site-${site.id}-departments`
   const failed = numbers?.status === 'failed'
@@ -361,6 +377,14 @@ function SiteRow({ site, numbers, showNumbers, expanded, onToggle, onOpen, onPar
             <Typography sx={{ flex: 1, fontSize: 13, fontWeight: 700, color: palette.textMuted }}>
               {facts.join(' · ')}
             </Typography>
+            {onDelete && (
+              <Button
+                color="error" startIcon={<DeleteOutlineRoundedIcon />} onClick={onDelete}
+                sx={{ fontWeight: 800, borderRadius: '12px', px: 1.5, alignSelf: { xs: 'flex-start', sm: 'auto' } }}
+              >
+                Delete site
+              </Button>
+            )}
             <Button
               variant="contained" endIcon={<ArrowForwardRoundedIcon />} onClick={onOpen}
               sx={{ fontWeight: 900, borderRadius: '12px', px: 2.5, alignSelf: { xs: 'stretch', sm: 'auto' },

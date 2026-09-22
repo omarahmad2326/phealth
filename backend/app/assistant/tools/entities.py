@@ -108,7 +108,7 @@ def resolve_entity(
 
     if kind == "facility":
         ctx.require_module("facilities")
-        base = ctx.scope_to_facilities(ctx.db.query(Facility), Facility.id)
+        base = ctx.scope_to_facilities(ctx.db.query(Facility).filter(Facility.live()), Facility.id)
         base = base.filter(Facility.name.ilike(pattern, escape="\\"))
         total = base.count()
         for facility in base.order_by(Facility.name).limit(take).all():
@@ -249,7 +249,7 @@ def facility_detail(ctx: ToolContext, facility_id: int) -> ToolResult:
     """Full profile for one facility, including contact and address."""
     ctx.require_module("facilities", "view")
     facility = ctx.scope_to_facilities(
-        ctx.db.query(Facility), Facility.id
+        ctx.db.query(Facility).filter(Facility.live()), Facility.id
     ).filter(Facility.id == facility_id).first()
     if facility is None:
         return ToolResult(

@@ -88,7 +88,8 @@ def run_once() -> dict[str, object]:
 
     db = SessionLocal()
     try:
-        facility_ids = [row.id for row in db.query(Facility.id).all()]
+        # A deleted site raises no tasks and sends no notices.
+        facility_ids = [row.id for row in db.query(Facility.id).filter(Facility.live()).all()]
         if not facility_ids:
             return {"facilities": 0}
 

@@ -4,6 +4,7 @@ import uuid
 import io
 import csv
 import re
+from datetime import datetime
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
@@ -152,6 +153,28 @@ def _next_facility_copy_name(db: Session, requested_name: str) -> str:
         copy_number += 1
 
 
+def _live(db: Session, id: int) -> Optional[Facility]:
+    """The site, unless there is no such site or it has been deleted."""
+    return db.query(Facility).filter(Facility.id == id, Facility.live()).first()
+
+
+def _deleted_name(db: Session, facility: Facility) -> str:
+    """The name a deleted site keeps: its own, saying it was deleted and when.
+
+    Names are unique, so keeping the old one would stop the same hospital
+    being registered again. Any old record that shows the site now says
+    plainly that it is gone.
+    """
+    day = datetime.utcnow().strftime("%d %b %Y").lstrip("0")
+    number = 1
+    while True:
+        suffix = f" (deleted {day})" if number == 1 else f" (deleted {day}, {number})"
+        candidate = f"{facility.name}{suffix}"
+        if not _facility_name_exists(db, candidate, exclude_id=facility.id):
+            return candidate
+        number += 1
+
+
 def _raise_facility_name_conflict(db: Session, error: IntegrityError) -> None:
     db.rollback()
     if "uq_facilities_name_canonical" in str(error.orig):
@@ -247,7 +270,7 @@ def _scoped_facilities(db: Session, facility: Facility, scope: str) -> list[Faci
     if scope.startswith("children"):
         return (
             db.query(Facility)
-            .filter(Facility.parent_facility_id == facility.id)
+            .filter(Facility.parent_facility_id == facility.id, Facility.live())
             .order_by(Facility.name.asc(), Facility.id.asc())
             .all()
         )
@@ -264,7 +287,7 @@ def _scoped_facilities(db: Session, facility: Facility, scope: str) -> list[Faci
             root = db.query(Facility).filter(Facility.id == facility.parent_facility_id).first() or facility
         children = (
             db.query(Facility)
-            .filter(Facility.parent_facility_id == root.id)
+            .filter(Facility.parent_facility_id == root.id, Facility.live())
             .order_by(Facility.name.asc(), Facility.id.asc())
             .all()
         )
@@ -398,8 +421,8 @@ def read_facilities(
     country: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Retrieve facilities (all authenticated users)."""
-    query = scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
+    """Retrieve facilities (all authenticated users). Deleted sites are never listed."""
+    query = scope_query_to_user_facilities(db.query(Facility).filter(Facility.live()), Facility.id, db, current_user)
     if status and status.strip():
         query = query.filter(func.lower(Facility.status) == status.strip().lower())
     if country and country.strip():
@@ -533,7 +556,7 @@ def read_facility_summary(
         .filter(FacilityTier.facility_id == Facility.id)
         .exists()
     )
-    scoped_query = scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
+    scoped_query = scope_query_to_user_facilities(db.query(Facility).filter(Facility.live()), Facility.id, db, current_user)
     rows = (
         scoped_query.with_entities(
             Facility.country,
@@ -573,7 +596,7 @@ def search_facilities(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Lightweight facility search for parent/child dropdowns."""
-    query = scope_query_to_user_facilities(db.query(Facility), Facility.id, db, current_user)
+    query = scope_query_to_user_facilities(db.query(Facility).filter(Facility.live()), Facility.id, db, current_user)
     query = query.filter(Facility.parent_facility_id.is_(None))
     if q:
         query = query.filter(Facility.name.ilike(f"%{q}%"))
@@ -588,7 +611,7 @@ def export_facilities_csv(
     current_user: User = Depends(get_superadmin_user),
 ) -> Any:
     """Export all facilities for super admin review."""
-    facilities = db.query(Facility).order_by(Facility.name.asc()).all()
+    facilities = db.query(Facility).filter(Facility.live()).order_by(Facility.name.asc()).all()
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow([
@@ -646,7 +669,7 @@ def export_scoped_facility_data(
     if scope not in SCOPED_EXPORT_SCOPES:
         raise HTTPException(status_code=400, detail="Unsupported export scope")
 
-    facility = db.query(Facility).filter(Facility.id == id).first()
+    facility = _live(db, id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, facility.id)
@@ -787,6 +810,8 @@ def create_facility(
     tier_ids = facility_in.tier_ids
     data = facility_in.model_dump(exclude={"tier_ids"})
     requested_name = _clean_facility_name(data.get("name"))
+    if str(data.get("status") or "").strip().lower() == Facility.DELETED:
+        raise HTTPException(status_code=400, detail="A new site cannot start out deleted")
     if auto_unique_name:
         data["name"] = _next_facility_copy_name(db, requested_name)
     else:
@@ -837,7 +862,7 @@ def facility_overview(
     rows, which is slower and also wrong: a list capped at 200 reports 200 beds
     however many there really are.
     """
-    facility = db.query(Facility).filter(Facility.id == id).first()
+    facility = _live(db, id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, id)
@@ -853,7 +878,7 @@ def read_facility(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Get a single facility by ID."""
-    facility = crud.facility.get(db=db, id=id)
+    facility = _live(db, id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, facility.id)
@@ -871,7 +896,7 @@ def update_facility(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Update a facility."""
-    facility = crud.facility.get(db=db, id=id)
+    facility = _live(db, id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, facility.id)
@@ -880,6 +905,8 @@ def update_facility(
     if tier_ids is None and facility_in.tier_id is not None:
         tier_ids = [facility_in.tier_id] if facility_in.tier_id else []
     update_data = facility_in.model_dump(exclude_unset=True)
+    if str(update_data.get("status") or "").strip().lower() == Facility.DELETED:
+        raise HTTPException(status_code=400, detail="To delete a site, use Delete site on the Sites page")
     if "name" in update_data:
         cleaned_name = _clean_facility_name(update_data.get("name"))
         _lock_facility_name(db, _facility_name_key(cleaned_name))
@@ -912,31 +939,39 @@ def delete_facility(
     id: int,
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Delete a facility — admin/superadmin only. Blocked if equipment is linked."""
-    facility = crud.facility.get(db=db, id=id)
+    """Delete a site - Super Admin and Admin only.
+
+    The site leaves every list of sites, and people assigned only to it lose
+    access, but nothing made at it is removed: its inspections, service jobs,
+    invoices and attendance stay as history. Removing the row instead would
+    be refused by the tables that point at a site, or would take permits,
+    readings and compliance records with it.
+    """
+    require_module_permission(current_user, "facilities", "delete")
+    facility = _live(db, id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, facility.id)
 
-    child_count = db.query(Facility.id).filter(Facility.parent_facility_id == id).count()
-    if child_count > 0:
+    children = [name for (name,) in db.query(Facility.name).filter(
+        Facility.parent_facility_id == id, Facility.live()).order_by(Facility.name).all()]
+    if children:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot delete facility: {child_count} child facility/facilities are linked to it.",
+            detail="Delete or move the sites under it first: {}.".format(", ".join(children)),
         )
 
-    # AC-5: prevent deletion if linked equipment exists
-    equipment_count = db.query(Equipment).filter(Equipment.facility_id == id).count()
-    if equipment_count > 0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot delete facility: {equipment_count} equipment item(s) are linked to it.",
-        )
-
-    facility_data = {c.name: str(getattr(facility, c.name)) for c in facility.__table__.columns}
-    deleted = crud.facility.remove(db=db, id=id)
-    log_activity(db, "facilities", id, "DELETE", current_user, facility_data)
-    return deleted
+    before = {c.name: str(getattr(facility, c.name)) for c in facility.__table__.columns}
+    _lock_facility_name(db, f"deleted:{_facility_name_key(facility.name)}")
+    facility.name = _deleted_name(db, facility)
+    facility.status = Facility.DELETED
+    try:
+        db.commit()
+    except IntegrityError as error:
+        _raise_facility_name_conflict(db, error)
+    db.refresh(facility)
+    log_activity(db, "facilities", id, "DELETE", current_user, before)
+    return _facility_response(db, facility)
 
 
 # ─── Document endpoints ────────────────────────────────────────────
@@ -948,7 +983,7 @@ def list_facility_documents(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """List all documents for a facility."""
-    facility = crud.facility.get(db=db, id=id)
+    facility = _live(db, id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, facility.id)
@@ -969,7 +1004,7 @@ async def upload_facility_document(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Upload a document to a facility."""
-    facility = crud.facility.get(db=db, id=id)
+    facility = _live(db, id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, facility.id)
@@ -1071,7 +1106,7 @@ def export_facility_pdf(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Export full facility data as a PDF."""
-    facility = crud.facility.get(db=db, id=id)
+    facility = _live(db, id)
     if not facility:
         raise HTTPException(status_code=404, detail="Facility not found")
     require_facility_access(db, current_user, facility.id)

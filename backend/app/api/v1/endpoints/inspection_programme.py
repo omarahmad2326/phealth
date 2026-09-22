@@ -38,14 +38,14 @@ router = APIRouter(dependencies=[Depends(require_module_access("inspections"))])
 
 def _site(db: Session, user: User, facility_id: int) -> Facility:
     facility = db.get(Facility, facility_id)
-    if facility is None:
+    if facility is None or facility.status == Facility.DELETED:
         raise HTTPException(status_code=404, detail="Site not found")
     require_facility_access(db, user, facility_id)
     return facility
 
 
 def _visible_sites(db: Session, user: User) -> list[Facility]:
-    query = db.query(Facility).filter(Facility.status != "inactive")
+    query = db.query(Facility).filter(Facility.status.notin_(("inactive", Facility.DELETED)))
     if is_facility_scoped_user(user):
         ids = get_user_facility_ids(db, user)
         if not ids:

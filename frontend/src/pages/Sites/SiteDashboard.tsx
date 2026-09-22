@@ -69,11 +69,18 @@ export default function SiteDashboard() {
     if (siteId) setFacilityId(siteId)
   }, [siteId, setFacilityId])
 
-  const { data: site } = useQuery({
+  const { data: site, error: siteError } = useQuery({
     queryKey: ['facility', siteId],
     queryFn: () => fetchFacility(siteId),
     enabled: !!siteId,
   })
+  // A deleted site, or one that never was: back to Sites rather than an
+  // empty page with the site still chosen.
+  useEffect(() => {
+    if ((siteError as any)?.response?.status !== 404) return
+    setFacilityId(null)
+    navigate('/sites', { replace: true })
+  }, [siteError, setFacilityId, navigate])
   const categories = useQuery({
     queryKey: ['category-overview', siteId],
     queryFn: () => fetchCategoryOverview(siteId),

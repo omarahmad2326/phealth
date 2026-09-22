@@ -138,7 +138,7 @@ def read_dashboard_summary(
     # Each table's several counts are collapsed into ONE query using Postgres
     # aggregate FILTER (count(*) FILTER (WHERE ...)). This turns ~18 sequential
     # round-trips into ~9, which materially speeds up the dashboard landing page.
-    facility_query = db.query(Facility)
+    facility_query = db.query(Facility).filter(Facility.live())
     if allowed_facility_ids is not None:
         facility_query = facility_query.filter(Facility.id.in_(allowed_facility_ids))
     facility_counts = facility_query.with_entities(
@@ -351,7 +351,7 @@ def _build_dashboard_intelligence(
         alert_counts["overdue-inspections"] = int(inspection_counts.overdue_open or 0)
 
     if has_module_permission(current_user, "facilities", "index"):
-        facilities = db.query(Facility)
+        facilities = db.query(Facility).filter(Facility.live())
         if allowed_facility_ids is not None:
             facilities = facilities.filter(Facility.id.in_(allowed_facility_ids))
         facility_counts = facilities.with_entities(

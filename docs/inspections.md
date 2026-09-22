@@ -195,6 +195,19 @@ departments, each showing equipment passed out of total and how many failed
 anything; they come from the same classified items as the site's numbers, so
 they add up. The old Sealed / Under review badge is not used here.
 
+### Deleting a site
+
+Super Admins and Admins see **Delete site** in a site's open row. It asks for
+the site's name to be typed, then the site leaves Sites, every site picker, the
+inspection board, Phia and the nightly jobs; opening it returns *not found*, and
+people assigned only to it are left with no site. Nothing made at it is
+removed: its inspections, service jobs, invoices and attendance stay as history
+(`facilities.status = 'deleted'`, `Facility.live()` is the filter). It is
+renamed "Name (deleted 22 Sep 2026)" so the same hospital can be registered
+again. A site with sites under it waits until they are deleted or moved.
+Setting the status to deleted by editing a site is refused, and Phia cannot
+delete a site.
+
 ### Count cards open their list
 
 Every count card - Passed, Failed, Red tagged, In progress, Due, Overdue - on

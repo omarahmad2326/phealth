@@ -58,6 +58,15 @@ def get_user_facility_ids(db: Session, user: User) -> set[int]:
         }
         facility_ids.update(child_ids)
 
+    if facility_ids:
+        # A deleted site gives nobody access, whoever was assigned to it.
+        facility_ids = {
+            facility_id
+            for (facility_id,) in db.query(Facility.id)
+            .filter(Facility.id.in_(facility_ids), Facility.live())
+            .all()
+        }
+
     return facility_ids
 
 
